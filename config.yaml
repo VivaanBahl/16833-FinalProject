@@ -1,0 +1,3 @@
+goal: [42, 50]
+short_thresh: 2
+long_thresh: 5
