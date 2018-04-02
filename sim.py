@@ -132,6 +132,9 @@ def main():
                     robot1.receive_short_range_message(message2to1)
                     robot2.receive_short_range_message(message1to2)
 
+        # Let each robot perform some computation at each time step.
+        for robot in robots:
+            robot.compute()
 
         # Perform visualization update.
         vis.update()

@@ -90,6 +90,17 @@ class Robot(object):
         return control_output
 
 
+    def compute(self):
+        """Perform all the computation required to process messages.
+
+        This method is called every time step, before time is updated in the
+        robot (before .step()). This method should be the one the robot uses to
+        perform all of the SLAM updates.
+        """
+        self.logger.debug("Computing at time %d", self.t)
+        pass
+
+
     def step(self, step):
         """Increment the robot's internal time state by some step size.
 
