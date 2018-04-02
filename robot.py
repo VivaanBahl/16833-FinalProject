@@ -5,7 +5,11 @@ class Robot(object):
     def __init__(self, config):
         self.config = config
         self.logger = logging.getLogger("Robot %d" % config['id'])
-        
+
+        id = config['id']
+        self.goal = np.array(config['goal'][id], dtype=float)
+        self.pos = np.array(config['start'][id], dtype=float)
+
         self.t = 0
 
 
@@ -29,8 +33,8 @@ class Robot(object):
         away from other robots but still within long range sensor range.
         """
         self.logger.debug("Received long range message %s", message)
-    
-    
+
+
     def receive_odometry_message(self, message):
         """Receive an odometry message to be able to sense the motion.
 
@@ -40,6 +44,7 @@ class Robot(object):
             message: Odometry measurement as a result of control output.
         """
         self.logger.debug("Received odometry message %s", message)
+        self.pos += message
 
 
     def get_short_range_message(self):
@@ -51,7 +56,7 @@ class Robot(object):
         Returns:
             Object to be transmitted to other robots when in short range.
         """
-        
+
         message = {"id": self.config['id']}
         message["data"] = [2]
         self.logger.debug("Returning short range message %s", message)
@@ -85,7 +90,8 @@ class Robot(object):
             Control output to feed into the robot model.
         """
 
-        control_output = np.array([-1, 1])
+        dir = self.goal - self.pos
+        control_output = dir / np.linalg.norm(dir)
         self.logger.debug("Returning control output %s", control_output)
         return control_output
 
