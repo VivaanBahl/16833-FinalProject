@@ -3,12 +3,22 @@ import numpy as np
 
 class Robot(object):
     def __init__(self, config):
-        self.config = config
+        """Initialize robot.
+
+        Intializes robot from configuration file. The start position and
+        covariance are specified from the configuration, while the ground truth
+        is stored in the corresponding RobotMotion.
+
+        Args:
+            config: Configuration file.
+        """
         self.logger = logging.getLogger("Robot %d" % config['id'])
 
-        id = config['id']
-        self.goal = np.array(config['goal'][id], dtype=float)
-        self.pos = np.array(config['start'][id], dtype=float)
+        self.logger.info("Initializing with config %s", config)
+        self.config = config
+        self.id = config['id']
+        self.goal = config['goal']
+        self.pos = config['start']
 
         self.t = 0
 
