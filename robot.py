@@ -1,4 +1,5 @@
 import logging
+import math
 import numpy as np
 
 class Robot(object):
@@ -9,6 +10,13 @@ class Robot(object):
         id = config['id']
         self.goal = np.array(config['goal'][id], dtype=float)
         self.pos = np.array(config['start'][id], dtype=float)
+        self.th = 0
+
+        #Motion Controller Params, could be moved into config
+        self.kp_pos = .1
+        self.kp_th = 1
+        self.v_lin_max = 10
+        self.v_th_max = math.pi / 16
 
         self.t = 0
 
@@ -39,12 +47,13 @@ class Robot(object):
         """Receive an odometry message to be able to sense the motion.
 
         This odometry measurement should be a result of the control output.
+        Odometry Format:  [linear_velocity, angular_velocity]
 
         Args:
             message: Odometry measurement as a result of control output.
         """
         self.logger.debug("Received odometry message %s", message)
-        self.pos += message
+        self.odom_message = message
 
 
     def get_short_range_message(self):
@@ -86,12 +95,21 @@ class Robot(object):
         The robot may attempt to effect some sort of motion at every time step,
         which will be a result of the control output from this time step.
 
+        Control Input:  [linear_velocity, angular_velocity]
+
         Returns:
             Control output to feed into the robot model.
         """
 
-        dir = self.goal - self.pos
-        control_output = dir / np.linalg.norm(dir)
+        #compute position and orientation errors relative to goal
+        d_pos = self.goal - self.pos
+        goal_th = math.atan2(d_pos[1], d_pos[0])
+        d_th = (goal_th - self.th + math.pi) % (2*math.pi) - math.pi
+
+        #Use proportional controllers on linear and angular velocity
+        v_lin = min(self.kp_pos * np.linalg.norm(d_pos), self.v_lin_max)
+        v_th = min(self.kp_th * d_th, self.v_th_max)
+        control_output = np.array([v_lin, v_th])
         self.logger.debug("Returning control output %s", control_output)
         return control_output
 
@@ -104,8 +122,9 @@ class Robot(object):
         perform all of the SLAM updates.
         """
         self.logger.debug("Computing at time %d", self.t)
-        pass
-
+        dir = np.array([math.cos(self.th), math.sin(self.th)])
+        self.pos += self.odom_message[0] * dir
+        self.th += self.odom_message[1]
 
     def step(self, step):
         """Increment the robot's internal time state by some step size.

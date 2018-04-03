@@ -1,3 +1,4 @@
+import math
 import numpy as np
 
 
@@ -14,6 +15,7 @@ class RobotMotion(object):
         Stores a position and velocity in 2D.
         """
         self.pos = np.zeros(2)
+        self.th = 0
         self.vel = np.zeros(2)
 
 
@@ -24,12 +26,18 @@ class RobotMotion(object):
         the ground truth will update. Based on the update, an odometry reading
         will be returned.
 
+        Control Input/Odometry Format:  [linear_velocity, angular_velocity]
+
         Returns:
             odometry measurement.
         """
 
         # Keep the ground truth perfect.
-        self.pos += control_input
+        dir = np.array([math.cos(self.th), math.sin(self.th)])
+        self.vel = control_input[0] * dir
+        self.pos += self.vel
+        self.th += control_input[1]
+        self.th = (self.th + math.pi) % (2*math.pi) - math.pi
 
         # Odometry output has noise associated with it.
-        return control_input + np.random.normal(0, 0.1, 2)
+        return control_input + np.random.normal(0, [0.1, .001])
