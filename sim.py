@@ -3,6 +3,7 @@
 import argparse
 import numpy as np
 import logging
+import time
 import yaml
 
 from robot import Robot
@@ -16,12 +17,6 @@ parser.add_argument(
     help="Configuration file for the robot."
 )
 parser.add_argument(
-    "-n", "--num_robots",
-    type=int,
-    default=3,
-    help="Number of robots to simulate."
-)
-parser.add_argument(
     "-r", "--random",
     action="store_true",
     default=False,
@@ -30,39 +25,49 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-def initialize_robots(config):
-    """Initialize the set of robots from the user input.
+def initialize_robots_and_motions(config):
+    """Initialize robots and robot motions.
+
+    For each robot, a RobotMotion object will be created. The RobotMotion object
+    will store the ground truth sampled from the mean and covariance specified
+    in the robot configuration. The Robot will receive the actual mean and
+    covariance specified in the initialization file. The number of robots will
+    be determined by the configuration file, and they'll be initialized round
+    robin from the parameters.
 
     Args:
         config: Configuration file.
 
     Returns:
-        List of initialized Robots.
+        (robots, motions) tuple of type (list of Robots, list of RobotMotions)
     """
+
+    num_robots = config['num_robots']
+    num_parameters = len(config['robot_parameters'])
+    logging.debug("Initializing %d Robots, RobotMotions from %d parameters", 
+            num_robots, num_parameters) 
 
     robots = []
-    for i in range(args.num_robots):
-        config['id'] = i
-        robots.append(Robot(config.copy()))
+    motions = []
+    for i in range(num_robots):
+        robot_config = config['robot_parameters'][i % num_parameters].copy()
+        robot_config['id'] = i
+        robot_config['sigma_initial'] = config['sigma_initial']
 
-    return robots
+        # Make everything a numpy array.
+        for key in robot_config:
+            if type(robot_config[key]) == list:
+                try:
+                    # We might be able to make it a numpy array.
+                    robot_config[key] = np.array(robot_config[key], dtype=float)
+                except:
+                    # But if not, leave it as the mixed types array it is.
+                    pass
 
+        robots.append(Robot(robot_config))
+        motions.append(RobotMotion(robot_config))
 
-def initialize_robot_motions(config):
-    """Initialize robot motions corresponding to each robot.
-
-    The idea is to create a software separation between the robot and its ground
-    truth. This is so that we don't accidentally use ground truth data in the
-    robot, forcing all of our code to be correct.
-
-    Args:
-        config: Configuration file.
-
-    Returns:
-        list of initialized RobotMotions.
-    """
-    motions = [RobotMotion() for i in range(args.num_robots)]
-    return motions
+    return robots, motions
 
 
 def dist(p1, p2):
@@ -87,9 +92,11 @@ def main():
     with open(args.robot_config) as f:
         config = yaml.load(f.read())
 
-    robots = initialize_robots(config)
-    motions = initialize_robot_motions(config)
+    #  robots = initialize_robots(config)
+    #  motions = initialize_robot_motions(config)
+    robots, motions = initialize_robots_and_motions(config)
     vis = Visualizer(robots, motions)
+    num_robots = len(robots)
 
     while True:
         for i, (robot, motion) in enumerate(zip(robots, motions)):
@@ -99,8 +106,8 @@ def main():
             odometry = motion.apply_control_input(control_output)
             robot.receive_odometry_message(odometry)
 
-        for i in range(args.num_robots):
-            for j in range(i+1, args.num_robots): # No self messages
+        for i in range(num_robots):
+            for j in range(i+1, num_robots): # No self messages
                 robot1 = robots[i]
                 robot2 = robots[j]
                 motion1 = motions[i]
@@ -142,6 +149,8 @@ def main():
         # As the final step of the loop, update the timestamp for each robot.
         for robot in robots:
             robot.step(1)
+
+        time.sleep(1)
 
 
 

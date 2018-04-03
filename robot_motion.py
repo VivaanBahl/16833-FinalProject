@@ -1,4 +1,5 @@
 import math
+import logging
 import numpy as np
 
 
@@ -9,14 +10,22 @@ class RobotMotion(object):
     motion model and odometry sensor.
     """
 
-    def __init__(self):
+    def __init__(self, config):
         """Initialize robot motion.
 
-        Stores a position and velocity in 2D.
+        Stores a position and velocity in 2D. The ground truth for the robot is
+        sampled from the initial sigma specified in the configuration.
         """
-        self.pos = np.zeros(2)
+        self.logger = logging.getLogger("Robot Motion %d" % config['id'])
+
+        self.pos = np.random.multivariate_normal(
+                config['start'],
+                config['sigma_initial']
+        )
         self.th = 0
-        self.vel = np.zeros(2)
+        self.vel = np.zeros(len(self.pos))
+
+        self.logger.debug("Initialized with position %s", self.pos)
 
 
     def apply_control_input(self, control_input):

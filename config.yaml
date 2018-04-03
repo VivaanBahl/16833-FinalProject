@@ -1,4 +1,12 @@
-goal: [[42, 50], [12, 20]]
-start: [[0, 0], [0, 0]]
 short_thresh: 2
 long_thresh: 5
+num_robots: 2
+sigma_initial: [
+    [0.1, 0.0],
+    [0.0, 0.1],
+]
+robot_parameters:
+    - start: [0, 0]
+      goal: [42, 50]
+    - start: [0, 0]
+      goal: [12, 20]
