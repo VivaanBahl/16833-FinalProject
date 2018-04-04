@@ -18,6 +18,11 @@ class Visualizer(object):
         self.motions = motions
         self.figure_number = 1
 
+        self.viewport_x_max = 100
+        self.viewport_x_min = -100
+        self.viewport_y_max = 100
+        self.viewport_y_min = -100
+
         fig = plt.figure(self.figure_number)
         plt.ion()
         plt.show()
