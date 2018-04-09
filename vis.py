@@ -36,6 +36,7 @@ class Visualizer(object):
         y_robot = []
         x_goal = []
         y_goal = []
+        headings = []
 
         # default viewport for the visualizer
         x_min_coord = 0
@@ -55,6 +56,9 @@ class Visualizer(object):
             x_goal.append(goal[0])
             y_goal.append(goal[1])
 
+            vel = motion.vel
+            headings.append((vel[0], vel[1]))
+
             # if a target is outside of the viewport, set viewport to include it
             if pos[0] < x_min_coord or goal[0] < x_min_coord:
                 x_min_coord = min(pos[0], goal[0])
@@ -70,6 +74,8 @@ class Visualizer(object):
 
         # draw "headings" aka the velocity vectors
         ax = plt.axes()
+        for i, heading in enumerate(headings):
+           ax.arrow(x_robot[i], y_robot[i], heading[0], heading[1])
 
         # draw goals as green x's
         plt.scatter(x_goal, y_goal, c='g', marker='x')
