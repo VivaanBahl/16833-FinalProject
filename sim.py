@@ -22,6 +22,12 @@ parser.add_argument(
     default=False,
     help="Use random number generation rather than a fixed seed."
 )
+parser.add_argument(
+    "-d", "--delay",
+    type=float,
+    default=0.5,
+    help="Time to sleep (in seconds) between time steps"
+)
 args = parser.parse_args()
 
 
@@ -150,7 +156,8 @@ def main():
         for robot in robots:
             robot.step(1)
 
-        time.sleep(1)
+        # Sleep for some amount of time.
+        time.sleep(args.delay)
 
 
 
