@@ -22,7 +22,7 @@ class RobotMotion(object):
                 config['start'],
                 config['sigma_initial']
         )
-        self.th = 0
+        self.th = 0 # Radians
         self.vel = np.zeros(len(self.pos))
 
         self.logger.debug("Initialized with position %s", self.pos)

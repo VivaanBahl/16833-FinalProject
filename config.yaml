@@ -1,12 +1,20 @@
 short_thresh: 2
-long_thresh: 5
+long_thresh: 50
 num_robots: 2
 sigma_initial: [
     [0.1, 0.0],
     [0.0, 0.1],
 ]
 robot_parameters:
-    - start: [0, 0]
-      goal: [42, 50]
-    - start: [0, 0]
-      goal: [12, 20]
+    - start: [  0,  0]
+      goal:  [-10,  5]
+    - start: [  0,  0]
+      goal:  [ 12, 20]
+sensor_parameters:
+    - delta: [0,  1]
+      orientation: 0
+      fov: 360
+    - delta: [0, -1]
+      orientation: 180
+      fov: 360
+sensor_sigma: 0.1
