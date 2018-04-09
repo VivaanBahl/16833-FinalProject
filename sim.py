@@ -95,16 +95,20 @@ def main():
     #  robots = initialize_robots(config)
     #  motions = initialize_robot_motions(config)
     robots, motions = initialize_robots_and_motions(config)
-    vis = Visualizer(robots, motions)
+    vis = Visualizer()
     num_robots = len(robots)
 
     while True:
+        # create array of odometry movements to show next to ground truth
+        odometries = []
+
         for i, (robot, motion) in enumerate(zip(robots, motions)):
 
             # Ground truth for the robots will be stored elsewhere.
             control_output = robot.get_control_output()
             odometry = motion.apply_control_input(control_output)
             robot.receive_odometry_message(odometry)
+            odometries.append(odometry)
 
         for i in range(num_robots):
             for j in range(i+1, num_robots): # No self messages
@@ -144,7 +148,7 @@ def main():
             robot.compute()
 
         # Perform visualization update.
-        vis.update()
+        vis.update(robots, motions, odometries)
 
         # As the final step of the loop, update the timestamp for each robot.
         for robot in robots:
