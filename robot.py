@@ -2,6 +2,11 @@ import logging
 import math
 import numpy as np
 
+from scipy import linalg
+from scipy.sparse import csc_matrix
+from scipy.sparse.linalg import splu
+from scipy.spatial.distance import euclidean
+
 class Robot(object):
     def __init__(self, config):
         """Initialize robot.
@@ -29,6 +34,10 @@ class Robot(object):
         self.v_th_max = math.pi / 16
 
         self.t = 0
+
+        self.x = np.asarray([[0],[0]])
+        self.max_iterations = 10
+        self.stopping_threshold = 1
 
 
     def receive_short_range_message(self, message):
@@ -123,6 +132,20 @@ class Robot(object):
         self.logger.debug("Returning control output %s", control_output)
         return control_output
 
+    def iterative_update(self,A,b):
+        A_sp = csc_matrix(A.T.dot(A))
+        A_splu = splu(A_sp)
+        prev_x = self.x
+        self.x = A_splu.solve(A.T.dot(b))
+
+        if(euclidean(self.x.T,prev_x) < self.stopping_threshold):
+            return False
+        return True
+
+    def construct_matrix(self):
+        b = np.asarray([[1.5],[4],[3]])
+        A = np.asarray([[self.x.T[0][0],self.x.T[0][1]],[4,5],[3,6]])
+        return A,b
 
     def compute(self):
         """Perform all the computation required to process messages.
@@ -135,6 +158,12 @@ class Robot(object):
         dir = np.array([math.cos(self.th), math.sin(self.th)])
         self.pos += self.odom_message[0] * dir
         self.th += self.odom_message[1]
+
+        for i in range(0,self.max_iterations):
+            A,b = self.construct_matrix()
+            print(self.x)
+            if(not self.iterative_update(A,b)):
+                break
 
     def step(self, step):
         """Increment the robot's internal time state by some step size.
