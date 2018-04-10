@@ -138,6 +138,10 @@ def do_long_range_message(config, robot1, robot2, motion1, motion2):
         # modify some state inside the robot.
         robot1.receive_long_range_message(message2to1)
         robot2.receive_long_range_message(message1to2)
+        
+        # indicate whether these two robots communicated
+        return True
+    return False
 
 
 def do_short_range_message(config, robot1, robot2, motion1, motion2):
@@ -166,6 +170,10 @@ def do_short_range_message(config, robot1, robot2, motion1, motion2):
         # And then transmit both of the messages.
         robot1.receive_short_range_message(message2to1)
         robot2.receive_short_range_message(message1to2)
+        
+        # indicate whether the two robots communicated
+        return True
+    return False
 
 
 def main():
@@ -179,10 +187,14 @@ def main():
     #  robots = initialize_robots(config)
     #  motions = initialize_robot_motions(config)
     robots, motions = initialize_robots_and_motions(config)
-    vis = Visualizer(robots, motions)
+    vis = Visualizer()
     num_robots = len(robots)
 
     while True:
+        # create array of pairs of robots that sent messages
+        long_range_measurements = []
+        short_range_measurements = []
+
         for i, (robot, motion) in enumerate(zip(robots, motions)):
 
             # Ground truth for the robots will be stored elsewhere.
@@ -197,16 +209,22 @@ def main():
                 motion1 = motions[i]
                 motion2 = motions[j]
 
-                # Potentially exchange long / short messages.
-                do_long_range_message(config, robot1, robot2, motion1, motion2)
-                do_short_range_message(config, robot1, robot2, motion1, motion2)
+                # Potentially exchange long / short messages, and log their results
+                did_short_range_comm = do_long_range_message(config, robot1, robot2, motion1, motion2)
+                did_long_range_comm = do_short_range_message(config, robot1, robot2, motion1, motion2)
+
+                # if we exchanged the messages, add the indices of the pair to the visualizer
+                if did_short_range_comm:
+                    short_range_measurements.append((i, j))
+                if did_long_range_comm:
+                    long_range_measurements.append((i, j))
 
         # Let each robot perform some computation at each time step.
         for robot in robots:
             robot.compute()
 
         # Perform visualization update.
-        vis.update()
+        vis.update(robots, motions, short_range_measurements, long_range_measurements)
 
         # As the final step of the loop, update the timestamp for each robot.
         for robot in robots:

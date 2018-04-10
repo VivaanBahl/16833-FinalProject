@@ -3,7 +3,7 @@ import logging
 
 
 class Visualizer(object):
-    def __init__(self, robots, motions):
+    def __init__(self):
         """Initialize visualizer with program data.
 
         Args:
@@ -14,20 +14,27 @@ class Visualizer(object):
         self.logger.info("Starting visualization.")
 
         # Note that these are aliased to the real ones. Don't modify, just read.
-        self.robots = robots
-        self.motions = motions
         self.figure_number = 1
-
-        self.viewport_x_max = 100
-        self.viewport_x_min = -100
-        self.viewport_y_max = 100
-        self.viewport_y_min = -100
 
         fig = plt.figure(self.figure_number)
         plt.ion()
         plt.show()
 
-    def update(self):
+
+    def draw_messages(self, ax, motions, measurement_arr, color):
+        for (xmit_index, recv_index) in measurement_arr:
+            motion1 = motions[xmit_index]
+            motion2 = motions[recv_index]
+            pos1 = motion1.pos
+            pos2 = motion2.pos
+
+            arrow_origin = pos1
+            arrow_size = pos2 - pos1
+
+            ax.arrow(arrow_origin[0], arrow_origin[1], arrow_size[0], arrow_size[1], ec=color)
+
+
+    def update(self, robots, motions, short_range_measurements, long_range_measurements):
         """Perform visualization updates here."""
 
         self.logger.debug("Updating visualization.")
@@ -37,30 +44,74 @@ class Visualizer(object):
         fig.clf()
 
         # TODO convert to numpy arrays for scalability
-        x_robot = []
-        y_robot = []
+        x_robot_gt = []
+        y_robot_gt = []
+        x_robot_pre = []
+        y_robot_pre = []
         x_goal = []
         y_goal = []
+        headings = []
 
-        for i, motion in enumerate(self.motions):
+        # default viewport for the visualizer
+        x_min_coord = 0
+        x_max_coord = 0
+        y_min_coord = 0
+        y_max_coord = 0
+
+        for i, motion in enumerate(motions):
             self.logger.debug("Robot {} has pos {}, vel {}".format(i, motion.pos, motion.vel))
 
             pos = motion.pos
-            x_robot.append(pos[0])
-            y_robot.append(pos[1])
+            x_robot_gt.append(pos[0])
+            y_robot_gt.append(pos[1])
 
-            robot = self.robots[i]
+            robot = robots[i]
             goal = robot.goal
             x_goal.append(goal[0])
             y_goal.append(goal[1])
 
-        # draw robots
-        plt.scatter(x_robot, y_robot)
+            vel = motion.vel
+            headings.append((vel[0], vel[1]))
+
+            belief = robot.pos
+            x_robot_pre.append(belief[0])
+            y_robot_pre.append(belief[1])
+
+            # if a target is outside of the viewport, set viewport to include it
+            if pos[0] < x_min_coord or goal[0] < x_min_coord:
+                x_min_coord = min(pos[0], goal[0])
+            if pos[0] > x_max_coord or goal[0] > x_max_coord:
+                x_max_coord = max(pos[0], goal[0])
+            if pos[1] < y_min_coord or goal[1] < y_min_coord:
+                y_min_coord = min(pos[1], goal[1])
+            if pos[1] > y_max_coord or goal[1] > y_max_coord:
+                y_max_coord = max(pos[1], goal[1])
+
+        # draw robots ground truth
+        plt.scatter(x_robot_gt, y_robot_gt, c='k', marker='o')
+
+        # draw the robot's belief
+        plt.scatter(x_robot_pre, y_robot_pre, c='b', marker='o')
+
+        # draw "headings" aka the velocity vectors
+        ax = plt.axes()
+        for i, heading in enumerate(headings):
+           ax.arrow(x_robot_gt[i], y_robot_gt[i], heading[0], heading[1])
 
         # draw goals as green x's
         plt.scatter(x_goal, y_goal, c='g', marker='x')
 
-        plt.xlim([self.viewport_x_min, self.viewport_x_max])
-        plt.ylim([self.viewport_y_min, self.viewport_y_max])
+        # draw messages being sent between robots
+        self.draw_messages(ax, motions, short_range_measurements, 'r')
+        self.draw_messages(ax, motions, long_range_measurements, 'y')
+
+        # calculate viewport bounds
+        x_scale = x_max_coord - x_min_coord
+        y_scale = y_max_coord - y_min_coord
+        x_margin = x_scale / 12
+        y_margin = y_scale / 12
+        plt.xlim([x_min_coord - x_margin, x_max_coord + x_margin])
+        plt.ylim([y_min_coord - y_margin, y_max_coord + y_margin])
+
         plt.pause(0.05)
         plt.show()
