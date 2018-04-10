@@ -3,6 +3,11 @@ import math
 import numpy as np
 import scipy.linalg
 
+from scipy import linalg
+from scipy.sparse import csc_matrix
+from scipy.sparse.linalg import splu
+from scipy.spatial.distance import euclidean
+
 class Robot(object):
     def __init__(self, config):
         """Initialize robot.
@@ -47,6 +52,15 @@ class Robot(object):
 
         self.t = 0
 
+        self.max_iterations = 50
+        self.stopping_threshold = 1e-6
+
+
+    def wrapToPi(self, angle):
+        """Wrap a measurement in radians to [-pi, pi]"""
+        return (angle + math.pi) % (2 * math.pi) - math.pi
+
+
     def receive_short_range_message(self, message):
         """Handle a short range message.
 
@@ -69,11 +83,13 @@ class Robot(object):
         self.logger.debug("Received long range message %s", message)
         other_id = message.data['id']
         ind = self.n_poses[self.id]
+        if not other_id in self.n_poses:
+          self.n_poses[other_id] = 0
         otherInd = self.n_poses[other_id]
-        for i, r in enumerate(message.measurement):
+        for i, r in enumerate(message.measurements):
           #measurements stored as (self_pose_index, other_id, other_pose_index,
           #                        sensor_index, range)
-          self.range_measurements.append(ind, other_id, otherInd, i, r)
+          self.range_measurements.append((ind, other_id, otherInd, i, r))
 
 
     def receive_odometry_message(self, message):
@@ -146,36 +162,65 @@ class Robot(object):
         self.logger.debug("Returning control output %s", control_output)
         return control_output
 
+    def iterative_update(self,A,b):
+        A_sp = csc_matrix(A.T.dot(A))
+        A_splu = splu(A_sp)
+        prev_x = self.x
+        self.x = A_splu.solve(A.T.dot(b))
+
+        if(euclidean(self.x.T,prev_x) < self.stopping_threshold):
+            return False
+        return True
 
     def build_odom_system(self, A, b, i0):
+        """builds the block of A and b corresponding to odometry measurements
+        Args:
+            A: Linear system being built
+            b: Error vector
+            i0: row at which to insert this block
+
+        Returns:
+            Number of rows in this block
+        """
         for i, (v, w) in enumerate(self.odom_measurements):
-            start = sum([self.n_poses[id] if id < self.id for id in self.n_poses])
+            start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
             j0 = self.pose_dim * (i + start)
             j1 = self.pose_dim * (i + 1 + start)
             p0 = self.x[j0:j0 + self.pose_dim]
             p1 = self.x[j1:j1 + self.pose_dim]
-            th = np.atan2(p1[2] - p0[2], p1[1] - p0[1])
+            eps = 1e-7
+            th = math.atan2(p1[2] - p0[2] + eps, p1[1] - p0[1] + eps)
             a0 = self.wrapToPi(th - p0[0])
-            l = math.sqrt((p1[1] - p0[1])**2 + (p1[2] - p0[2])**2)
+            l = math.sqrt((p1[1] - p0[1] + eps)**2 + (p1[2] - p0[2] + eps)**2)
             a1 = self.wrapToPi(p1[0] - th)
-            H = np.array([[-1, (p0[2] - p1[2]) / l**2, (p0[1] - p1[1]) / l**2,
-                           0, (p1[2] - p0[2]) / l**2, (p1[1] - p0[1]) / l**2],
-                          [0, (p0[1] - p1[1]) / l, (p0[2] - p1[2]) / l,
-                           0, (p1[1] - p0[1]) / l, (p1[2] - p0[2])],
-                          [0, (p1[2] - p0[2]) / l**2, (p1[1] - p0[1]) / l**2,
-                           -1, (p0[2] - p1[2]) / l**2, (p0[1] - p1[1]) / l**2]])
+            H = np.array([[-1, (p0[2] - p1[2] + eps) / l**2, (p0[1] - p1[1] + eps) / l**2,
+                           0, (p1[2] - p0[2] + eps) / l**2, (p1[1] - p0[1] + eps) / l**2],
+                          [0, (p0[1] - p1[1] + eps) / l, (p0[2] - p1[2] + eps) / l,
+                           0, (p1[1] - p0[1] + eps) / l, (p1[2] - p0[2] + eps) / l],
+                          [0, (p1[2] - p0[2] + eps) / l**2, (p1[1] - p0[1] + eps) / l**2,
+                           1, (p0[2] - p1[2] + eps) / l**2, (p0[1] - p1[1] + eps) / l**2]])
             H = self.sigma_odom_inv.dot(H)
             A[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), j0:j0 + self.pose_dim] = H[:, :self.pose_dim]
             A[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), j1:j1 + self.pose_dim] = H[:, self.pose_dim:]
             #TODO: odom measurements should be multiplied by dt
-            b[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), 0] = [0 - a0, v - l, w - a1]
+            b[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), 0] = [self.wrapToPi(0 - a0), v - l, self.wrapToPi(w - a1)]
         return self.odom_dim * len(self.odom_measurements)
 
 
     def build_range_system(self, A, b, i0):
+        """Builds the block of A and b corresponding to range measurements
+        Args:
+            A: Linear system being built
+            b: Error vector
+            i0: row at which to insert this block
+
+        Returns:
+            Number of rows in this block
+
+        """
         for i, (ind, other_id, other_ind, si, rMeas) in enumerate(self.range_measurements):
-            start = sum([self.n_poses[id] if id < self.id for id in self.poses])
-            other_start = sum([self.n_poses[id] if id < other_id for id in self.poses])
+            start = sum([self.n_poses[id] for id in self.poses if id < self.id])
+            other_start = sum([self.n_poses[id] for id in self.poses if id < other_id])
             j0 = self.pose_dim * (ind + start)
             j1 = self.pose_dim * (other_ind + other_start)
             p0 = self.x[j0:j0 + self.pose_dim]
@@ -200,8 +245,8 @@ class Robot(object):
         """Build A and b linearized around the current state
         """
         M = len(self.odom_measurements) * self.odom_dim + \
-            #len(self.range_measurements) * self.range_dim + \
             self.pose_dim
+            #len(self.range_measurements) * self.range_dim + \
         N = sum(self.n_poses.values()) * self.pose_dim
         A = scipy.sparse.lil_matrix((M, N))
         b = np.zeros((M, 1))
@@ -228,11 +273,20 @@ class Robot(object):
         #use previous pose as current pose estimate
         self.x = np.vstack((self.x, self.x[-self.pose_dim:]))
         self.n_poses[self.id] += 1
-        self.build_system()
 
         dir = np.array([math.cos(self.th), math.sin(self.th)])
         self.pos += self.odom_measurements[-1][0] * dir
         self.th += self.odom_measurements[-1][1]
+
+#        for i in range(0,self.max_iterations):
+#            A,b = self.build_system()
+#            if(not self.iterative_update(A,b)):
+#                break
+#
+#        start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
+#        j0 = start + self.pose_dim * (self.n_poses[self.id] - 1)
+#        self.pos = self.x[j0 + 1:j0 + 3].flatten()
+#        self.th = self.x[j0]
 
     def step(self, step):
         """Increment the robot's internal time state by some step size.

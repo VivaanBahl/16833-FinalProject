@@ -62,6 +62,7 @@ def initialize_robots_and_motions(config):
         robot_config['id'] = i
         robot_config['sigma_initial'] = config['sigma_initial']
         robot_config['sigma_odom'] = config['sigma_odom']
+        robot_config['sensor_parameters'] = config['sensor_parameters']
 
         # Make everything a numpy array.
         for key in robot_config:
