@@ -23,7 +23,7 @@ class RobotMotion(object):
                 config['sigma_initial']
         )
         self.pos = x0[1:]
-        self.th = x0[0]
+        self.th = (x0[0] + math.pi) % (2*math.pi) - math.pi
         self.vel = np.zeros(len(self.pos))
 
         self.logger.debug("Initialized with position %s", self.pos)

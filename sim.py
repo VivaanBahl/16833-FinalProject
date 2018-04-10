@@ -9,6 +9,8 @@ import yaml
 from robot import Robot
 from robot_motion import RobotMotion
 from vis import Visualizer
+from long_range_message import LongRangeMessage
+from sensor_model import SensorModel
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -21,6 +23,12 @@ parser.add_argument(
     action="store_true",
     default=False,
     help="Use random number generation rather than a fixed seed."
+)
+parser.add_argument(
+    "-d", "--delay",
+    type=float,
+    default=0.5,
+    help="Time to sleep (in seconds) between time steps"
 )
 args = parser.parse_args()
 
@@ -85,6 +93,80 @@ def dist(p1, p2):
     return np.linalg.norm(p2 - p1)
 
 
+def do_long_range_message(config, robot1, robot2, motion1, motion2):
+    """Potentially transfer long range messages between robots.
+
+    Depending on whether the robots are within thresh distance, they will
+    exchange long range measurements. The long range measurements are sent in
+    the form of LongRangeMeasurement objects.
+
+    Args:
+        config: Configuration file.
+        robot1: First Robot object.
+        robot2: Second Robot object.
+        motion1: First RobotMotion object.
+        motion2: Second RobotMotion object.
+    """
+
+    # If within long range, exchange long range sensor measurements.
+    if dist(motion1.pos, motion2.pos) < config['long_thresh']:
+        # Get message data from each robot.
+        message1to2_data = robot1.get_long_range_message()
+        message2to1_data = robot2.get_long_range_message()
+
+        # Create the sensor model, which will be used to make all measurements.
+        sm = SensorModel(config)
+
+        # Compute the pairwise sensor measurements between each robot.
+        num_sensors = len(config['sensor_parameters'])
+
+        robot1_measurements = [sm.get_measurement(motion1, i, motion2)
+                for i in range(num_sensors)]
+        robot2_measurements = [sm.get_measurement(motion2, i, motion1)
+                for i in range(num_sensors)]
+
+        logging.debug("Robot 1 Measurements: %s", robot1_measurements)
+        logging.debug("Robot 2 Measurements: %s", robot2_measurements)
+
+        # Stuff the data into the LongRangeMessages
+        message1to2 = LongRangeMessage(message1to2_data, robot1_measurements)
+        message2to1 = LongRangeMessage(message2to1_data, robot2_measurements)
+
+        # And then transmit both of the messages.
+        # Do it this way to ensure that receiving a message doesn't
+        # modify some state inside the robot.
+        robot1.receive_long_range_message(message2to1)
+        robot2.receive_long_range_message(message1to2)
+
+
+def do_short_range_message(config, robot1, robot2, motion1, motion2):
+    """Potentially transfer long range messages between robots.
+
+    Depending on whether the robots are within thresh distance, they will
+    exchange short range measurements. The data exchanged is just what is
+    returned by get_short_range_message(), with no additional sensor data.
+
+    Args:
+        config: Configuration file.
+        robot1: First Robot object.
+        robot2: Second Robot object.
+        motion1: First RobotMotion object.
+        motion2: Second RobotMotion object.
+    """
+    # If within short range, exchange more detailed data. Note that
+    # this allows both long range and short range measurements to be
+    # sent when the robots are close enough, with the long range
+    # measurements being sent first.
+    if dist(motion1.pos, motion2.pos) < config['short_thresh']:
+        # Get both message first.
+        message1to2 = robot1.get_short_range_message()
+        message2to1 = robot2.get_short_range_message()
+
+        # And then transmit both of the messages.
+        robot1.receive_short_range_message(message2to1)
+        robot2.receive_short_range_message(message1to2)
+
+
 def main():
     logging.basicConfig(level=logging.DEBUG)
     if not args.random:
@@ -114,31 +196,9 @@ def main():
                 motion1 = motions[i]
                 motion2 = motions[j]
 
-                # If within long range, exchange long range sensor measurements.
-                if dist(motion1.pos, motion2.pos) < config['long_thresh']:
-                    # Get both message first.
-                    message1to2 = robot1.get_long_range_message()
-                    message2to1 = robot2.get_long_range_message()
-
-                    # And then transmit both of the messages.
-                    robot1.receive_long_range_message(message2to1)
-                    robot2.receive_long_range_message(message1to2)
-
-                    # Do it this way to ensure that receiving a message doesn't
-                    # modify some state inside the robot.
-
-                # If within short range, exchange more detailed data. Note that
-                # this allows both long range and short range measurements to be
-                # sent when the robots are close enough, with the long range
-                # measurements being sent first.
-                if dist(motion1.pos, motion2.pos) < config['long_thresh']:
-                    # Get both message first.
-                    message1to2 = robot1.get_short_range_message()
-                    message2to1 = robot2.get_short_range_message()
-
-                    # And then transmit both of the messages.
-                    robot1.receive_short_range_message(message2to1)
-                    robot2.receive_short_range_message(message1to2)
+                # Potentially exchange long / short messages.
+                do_long_range_message(config, robot1, robot2, motion1, motion2)
+                do_short_range_message(config, robot1, robot2, motion1, motion2)
 
         # Let each robot perform some computation at each time step.
         for robot in robots:
@@ -151,10 +211,8 @@ def main():
         for robot in robots:
             robot.step(1)
 
-        time.sleep(1)
-
-
-
+        # Sleep for some amount of time.
+        time.sleep(args.delay)
 
 if __name__ == "__main__":
     main()

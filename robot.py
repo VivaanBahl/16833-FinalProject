@@ -38,7 +38,7 @@ class Robot(object):
         self.x = np.zeros((self.pose_dim, 1))
         self.x[:, 0] = (self.th, self.pos[0], self.pos[1])
 
-        #Motion Controller Params, could be moved into config
+        # Motion Controller Params, could be moved into config
         self.kp_pos = .1
         self.kp_th = 1
         self.v_lin_max = 10
