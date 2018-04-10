@@ -189,9 +189,6 @@ def main():
     num_robots = len(robots)
 
     while True:
-        # create array of odometry movements to show next to ground truth
-        odometries = []
-    
         # create array of pairs of robots that sent messages
         long_range_measurements = []
         short_range_measurements = []
@@ -202,7 +199,6 @@ def main():
             control_output = robot.get_control_output()
             odometry = motion.apply_control_input(control_output)
             robot.receive_odometry_message(odometry)
-            odometries.append(odometry)
 
         for i in range(num_robots):
             for j in range(i+1, num_robots): # No self messages
@@ -227,7 +223,7 @@ def main():
             robot.compute()
 
         # Perform visualization update.
-        vis.update(robots, motions, odometries, short_range_measurements, long_range_measurements)
+        vis.update(robots, motions, short_range_measurements, long_range_measurements)
 
         # As the final step of the loop, update the timestamp for each robot.
         for robot in robots:

@@ -34,7 +34,7 @@ class Visualizer(object):
             ax.arrow(arrow_origin[0], arrow_origin[1], arrow_size[0], arrow_size[1], ec=color)
 
 
-    def update(self, robots, motions, odometry, short_range_measurements, long_range_measurements):
+    def update(self, robots, motions, short_range_measurements, long_range_measurements):
         """Perform visualization updates here."""
 
         self.logger.debug("Updating visualization.")
@@ -73,9 +73,9 @@ class Visualizer(object):
             vel = motion.vel
             headings.append((vel[0], vel[1]))
 
-            odom = odometry[i]
-            x_robot_pre.append(pos[0] + odom[0])
-            y_robot_pre.append(pos[1] + odom[1])
+            belief = robot.pos
+            x_robot_pre.append(belief[0])
+            y_robot_pre.append(belief[1])
 
             # if a target is outside of the viewport, set viewport to include it
             if pos[0] < x_min_coord or goal[0] < x_min_coord:
