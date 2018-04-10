@@ -26,6 +26,7 @@ class Robot(object):
         self.sigma_init_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_init))
         sigma_odom = config['sigma_odom']
         self.sigma_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_odom))
+        self.sensor_deltas = [np.array(s['delta']) for s in config['sensor_parameters']]
 
         self.start_pos = config['start']
         self.odom_measurements = []
@@ -66,6 +67,13 @@ class Robot(object):
         away from other robots but still within long range sensor range.
         """
         self.logger.debug("Received long range message %s", message)
+        other_id = message.data['id']
+        ind = self.n_poses[self.id]
+        otherInd = self.n_poses[other_id]
+        for i, r in enumerate(message.measurement):
+          #measurements stored as (self_pose_index, other_id, other_pose_index,
+          #                        sensor_index, range)
+          self.range_measurements.append(ind, other_id, otherInd, i, r)
 
 
     def receive_odometry_message(self, message):
@@ -138,11 +146,61 @@ class Robot(object):
         self.logger.debug("Returning control output %s", control_output)
         return control_output
 
+
+    def build_odom_system(self, A, b, i0):
+        for i, (v, w) in enumerate(self.odom_measurements):
+            start = sum([self.n_poses[id] if id < self.id for id in self.n_poses])
+            j0 = self.pose_dim * (i + start)
+            j1 = self.pose_dim * (i + 1 + start)
+            p0 = self.x[j0:j0 + self.pose_dim]
+            p1 = self.x[j1:j1 + self.pose_dim]
+            th = np.atan2(p1[2] - p0[2], p1[1] - p0[1])
+            a0 = self.wrapToPi(th - p0[0])
+            l = math.sqrt((p1[1] - p0[1])**2 + (p1[2] - p0[2])**2)
+            a1 = self.wrapToPi(p1[0] - th)
+            H = np.array([[-1, (p0[2] - p1[2]) / l**2, (p0[1] - p1[1]) / l**2,
+                           0, (p1[2] - p0[2]) / l**2, (p1[1] - p0[1]) / l**2],
+                          [0, (p0[1] - p1[1]) / l, (p0[2] - p1[2]) / l,
+                           0, (p1[1] - p0[1]) / l, (p1[2] - p0[2])],
+                          [0, (p1[2] - p0[2]) / l**2, (p1[1] - p0[1]) / l**2,
+                           -1, (p0[2] - p1[2]) / l**2, (p0[1] - p1[1]) / l**2]])
+            H = self.sigma_odom_inv.dot(H)
+            A[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), j0:j0 + self.pose_dim] = H[:, :self.pose_dim]
+            A[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), j1:j1 + self.pose_dim] = H[:, self.pose_dim:]
+            #TODO: odom measurements should be multiplied by dt
+            b[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), 0] = [0 - a0, v - l, w - a1]
+        return self.odom_dim * len(self.odom_measurements)
+
+
+    def build_range_system(self, A, b, i0):
+        for i, (ind, other_id, other_ind, si, rMeas) in enumerate(self.range_measurements):
+            start = sum([self.n_poses[id] if id < self.id for id in self.poses])
+            other_start = sum([self.n_poses[id] if id < other_id for id in self.poses])
+            j0 = self.pose_dim * (ind + start)
+            j1 = self.pose_dim * (other_ind + other_start)
+            p0 = self.x[j0:j0 + self.pose_dim]
+            p1 = self.x[j1:j1 + self.pose_dim]
+            th = p0[0]
+            R = np.array([[np.cos(th), -np.sin(th)],
+                          [np.sin(th),  np.cos(th)]])
+
+            delta = self.sensor_deltas[si]
+            d = p0[1:] + R.dot(delta) - p0[1:]
+            r = np.linalg.norm(d)
+            H = np.array([[(d[0] * (-delta[0]*np.sin(th) - delta[1]*np.cos(th)) +
+                            d[1] * (delta[0]*np.cos(th) - delta[1]*np.sin(th))) / r,
+                           d[0] / r, d[1] / r,  0, -d[0] / r, -d[1] / r]])
+            H = self.sigma_range_inv.dot(H)
+            A[i0 + self.range_dim*i:i0 + self.range_dim*(i+1), j0:j0 + self.pose_dim] = H[:, :self.pose_dim]
+            A[i0 + self.range_dim*i:i0 + self.range_dim*(i+1), j1:j1 + self.pose_dim] = H[:, self.pose_dim:]
+            b[i0 + self.range_dim*i:i0 + self.range_dim*(i+1), 0] = rMeas - r
+
+
     def build_system(self):
         """Build A and b linearized around the current state
         """
         M = len(self.odom_measurements) * self.odom_dim + \
-            len(self.range_measurements) * self.range_dim + \
+            #len(self.range_measurements) * self.range_dim + \
             self.pose_dim
         N = sum(self.n_poses.values()) * self.pose_dim
         A = scipy.sparse.lil_matrix((M, N))
@@ -152,23 +210,10 @@ class Robot(object):
         A[:self.pose_dim, :self.pose_dim] = self.sigma_init_inv
         b[:self.pose_dim, 0] = self.start_pos
 
-        #Odometry Measurements
-        for i, (v, w) in enumerate(self.odom_measurements):
-          i0 = self.pose_dim * i
-          i1 = self.pose_dim * (i + 1)
-          p0 = self.x[i0:i0 + self.pose_dim]
-          p1 = self.x[i1:i1 + self.pose_dim]
-          l = math.sqrt((p1[1] - p0[1])**2 + (p1[2] - p0[2])**2)
-          H = np.array([[-1, (p0[2] - p1[2]) / l**2, (p0[1] - p1[1]) / l**2,
-                         0, (p1[2] - p0[2]) / l**2, (p1[1] - p0[1]) / l**2],
-                        [0, (p0[1] - p1[1]) / l, (p0[2] - p1[2]) / l,
-                         0, (p1[1] - p0[1]) / l, (p1[2] - p0[2])],
-                        [0, (p1[2] - p0[2]) / l**2, (p1[1] - p0[1]) / l**2,
-                         -1, (p0[2] - p1[2]) / l**2, (p0[1] - p1[1]) / l**2]])
-          H = self.sigma_odom_inv.dot(H)
-          A[self.odom_dim*i + 1:self.odom_dim*i + self.odom_dim + 1, i0:i0 + self.pose_dim] = H[:, :self.pose_dim]
-          A[self.odom_dim*i + 1:self.odom_dim*i + self.odom_dim + 1, i1:i1 + self.pose_dim] = H[:, self.pose_dim:]
-          b[self.odom_dim*i + 1:self.odom_dim*i + self.odom_dim + 1, 0] = [0, v, w]
+        i0 = self.pose_dim
+        i0 += self.build_odom_system(A, b, i0)
+        #i0 += self.build_range_system(A, b, i0)
+
         return A, b
 
 
