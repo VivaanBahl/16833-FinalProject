@@ -136,10 +136,13 @@ def do_long_range_message(config, robot1, robot2, motion1, motion2):
         # modify some state inside the robot.
         robot1.receive_long_range_message(message2to1)
         robot2.receive_long_range_message(message1to2)
+<<<<<<< HEAD
         
         # indicate whether these two robots communicated
         return True
     return False
+=======
+>>>>>>> master
 
 
 def do_short_range_message(config, robot1, robot2, motion1, motion2):
@@ -168,10 +171,13 @@ def do_short_range_message(config, robot1, robot2, motion1, motion2):
         # And then transmit both of the messages.
         robot1.receive_short_range_message(message2to1)
         robot2.receive_short_range_message(message1to2)
+<<<<<<< HEAD
         
         # indicate whether the two robots communicated
         return True
     return False
+=======
+>>>>>>> master
 
 
 def main():
@@ -207,7 +213,7 @@ def main():
                 motion1 = motions[i]
                 motion2 = motions[j]
 
-                # Potentially exchange long / short messages.
+                # Potentially exchange long / short messages, and log their results
                 did_short_range_comm = do_long_range_message(config, robot1, robot2, motion1, motion2)
                 did_long_range_comm = do_short_range_message(config, robot1, robot2, motion1, motion2)
 
@@ -216,7 +222,6 @@ def main():
                     short_range_measurements.append((i, j))
                 if did_long_range_comm:
                     long_range_measurements.append((i, j))
-
 
         # Let each robot perform some computation at each time step.
         for robot in robots:
