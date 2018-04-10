@@ -20,9 +20,9 @@ class Robot(object):
         self.id = config['id']
         self.goal = config['goal']
         self.pos = config['start']
-        self.th = 0
+        self.th = 0 # Radians
 
-        #Motion Controller Params, could be moved into config
+        # Motion Controller Params, could be moved into config
         self.kp_pos = .1
         self.kp_th = 1
         self.v_lin_max = 10
