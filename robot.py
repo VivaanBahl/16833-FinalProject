@@ -1,6 +1,7 @@
 import logging
 import math
 import numpy as np
+import scipy.linalg
 
 class Robot(object):
     def __init__(self, config):
@@ -19,8 +20,23 @@ class Robot(object):
         self.config = config
         self.id = config['id']
         self.goal = config['goal']
-        self.pos = config['start']
-        self.th = 0
+        self.pos = config['start'][1:]
+        self.th = config['start'][0]
+        sigma_init = config['sigma_initial']
+        self.sigma_init_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_init))
+        sigma_odom = config['sigma_odom']
+        self.sigma_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_odom))
+
+        self.start_pos = config['start']
+        self.odom_measurements = []
+        self.range_measurements = []
+        self.n_poses = {self.id : 1}
+        self.pose_dim = 3
+        self.odom_dim = 3
+        self.range_dim = 1
+
+        self.x = np.zeros((self.pose_dim, 1))
+        self.x[:, 0] = (self.th, self.pos[0], self.pos[1])
 
         #Motion Controller Params, could be moved into config
         self.kp_pos = .1
@@ -29,7 +45,6 @@ class Robot(object):
         self.v_th_max = math.pi / 16
 
         self.t = 0
-
 
     def receive_short_range_message(self, message):
         """Handle a short range message.
@@ -63,7 +78,7 @@ class Robot(object):
             message: Odometry measurement as a result of control output.
         """
         self.logger.debug("Received odometry message %s", message)
-        self.odom_message = message
+        self.odom_measurements.append(message)
 
 
     def get_short_range_message(self):
@@ -123,6 +138,39 @@ class Robot(object):
         self.logger.debug("Returning control output %s", control_output)
         return control_output
 
+    def build_system(self):
+        """Build A and b linearized around the current state
+        """
+        M = len(self.odom_measurements) * self.odom_dim + \
+            len(self.range_measurements) * self.range_dim + \
+            self.pose_dim
+        N = sum(self.n_poses.values()) * self.pose_dim
+        A = scipy.sparse.lil_matrix((M, N))
+        b = np.zeros((M, 1))
+
+        #Prior
+        A[:self.pose_dim, :self.pose_dim] = self.sigma_init_inv
+        b[:self.pose_dim, 0] = self.start_pos
+
+        #Odometry Measurements
+        for i, (v, w) in enumerate(self.odom_measurements):
+          i0 = self.pose_dim * i
+          i1 = self.pose_dim * (i + 1)
+          p0 = self.x[i0:i0 + self.pose_dim]
+          p1 = self.x[i1:i1 + self.pose_dim]
+          l = math.sqrt((p1[1] - p0[1])**2 + (p1[2] - p0[2])**2)
+          H = np.array([[-1, (p0[2] - p1[2]) / l**2, (p0[1] - p1[1]) / l**2,
+                         0, (p1[2] - p0[2]) / l**2, (p1[1] - p0[1]) / l**2],
+                        [0, (p0[1] - p1[1]) / l, (p0[2] - p1[2]) / l,
+                         0, (p1[1] - p0[1]) / l, (p1[2] - p0[2])],
+                        [0, (p1[2] - p0[2]) / l**2, (p1[1] - p0[1]) / l**2,
+                         -1, (p0[2] - p1[2]) / l**2, (p0[1] - p1[1]) / l**2]])
+          H = self.sigma_odom_inv.dot(H)
+          A[self.odom_dim*i + 1:self.odom_dim*i + self.odom_dim + 1, i0:i0 + self.pose_dim] = H[:, :self.pose_dim]
+          A[self.odom_dim*i + 1:self.odom_dim*i + self.odom_dim + 1, i1:i1 + self.pose_dim] = H[:, self.pose_dim:]
+          b[self.odom_dim*i + 1:self.odom_dim*i + self.odom_dim + 1, 0] = [0, v, w]
+        return A, b
+
 
     def compute(self):
         """Perform all the computation required to process messages.
@@ -132,9 +180,14 @@ class Robot(object):
         perform all of the SLAM updates.
         """
         self.logger.debug("Computing at time %d", self.t)
+        #use previous pose as current pose estimate
+        self.x = np.vstack((self.x, self.x[-self.pose_dim:]))
+        self.n_poses[self.id] += 1
+        self.build_system()
+
         dir = np.array([math.cos(self.th), math.sin(self.th)])
-        self.pos += self.odom_message[0] * dir
-        self.th += self.odom_message[1]
+        self.pos += self.odom_measurements[-1][0] * dir
+        self.th += self.odom_measurements[-1][1]
 
     def step(self, step):
         """Increment the robot's internal time state by some step size.

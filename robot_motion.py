@@ -18,11 +18,12 @@ class RobotMotion(object):
         """
         self.logger = logging.getLogger("Robot Motion %d" % config['id'])
 
-        self.pos = np.random.multivariate_normal(
+        x0 = np.random.multivariate_normal(
                 config['start'],
                 config['sigma_initial']
         )
-        self.th = 0
+        self.pos = x0[1:]
+        self.th = x0[0]
         self.vel = np.zeros(len(self.pos))
 
         self.logger.debug("Initialized with position %s", self.pos)

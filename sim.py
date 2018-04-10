@@ -12,7 +12,7 @@ from vis import Visualizer
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "robot_config", 
+    "robot_config",
     type=str,
     help="Configuration file for the robot."
 )
@@ -44,8 +44,8 @@ def initialize_robots_and_motions(config):
 
     num_robots = config['num_robots']
     num_parameters = len(config['robot_parameters'])
-    logging.debug("Initializing %d Robots, RobotMotions from %d parameters", 
-            num_robots, num_parameters) 
+    logging.debug("Initializing %d Robots, RobotMotions from %d parameters",
+            num_robots, num_parameters)
 
     robots = []
     motions = []
@@ -53,6 +53,7 @@ def initialize_robots_and_motions(config):
         robot_config = config['robot_parameters'][i % num_parameters].copy()
         robot_config['id'] = i
         robot_config['sigma_initial'] = config['sigma_initial']
+        robot_config['sigma_odom'] = config['sigma_odom']
 
         # Make everything a numpy array.
         for key in robot_config:
@@ -88,7 +89,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
     if not args.random:
         np.random.seed(42)
-    
+
     with open(args.robot_config) as f:
         config = yaml.load(f.read())
 
@@ -118,14 +119,14 @@ def main():
                     # Get both message first.
                     message1to2 = robot1.get_long_range_message()
                     message2to1 = robot2.get_long_range_message()
-   
+
                     # And then transmit both of the messages.
                     robot1.receive_long_range_message(message2to1)
                     robot2.receive_long_range_message(message1to2)
 
                     # Do it this way to ensure that receiving a message doesn't
                     # modify some state inside the robot.
-               
+
                 # If within short range, exchange more detailed data. Note that
                 # this allows both long range and short range measurements to be
                 # sent when the robots are close enough, with the long range
@@ -134,7 +135,7 @@ def main():
                     # Get both message first.
                     message1to2 = robot1.get_short_range_message()
                     message2to1 = robot2.get_short_range_message()
-   
+
                     # And then transmit both of the messages.
                     robot1.receive_short_range_message(message2to1)
                     robot2.receive_short_range_message(message1to2)
