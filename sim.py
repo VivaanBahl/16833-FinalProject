@@ -136,6 +136,10 @@ def do_long_range_message(config, robot1, robot2, motion1, motion2):
         # modify some state inside the robot.
         robot1.receive_long_range_message(message2to1)
         robot2.receive_long_range_message(message1to2)
+        
+        # indicate whether these two robots communicated
+        return True
+    return False
 
 
 def do_short_range_message(config, robot1, robot2, motion1, motion2):
@@ -164,6 +168,10 @@ def do_short_range_message(config, robot1, robot2, motion1, motion2):
         # And then transmit both of the messages.
         robot1.receive_short_range_message(message2to1)
         robot2.receive_short_range_message(message1to2)
+        
+        # indicate whether the two robots communicated
+        return True
+    return False
 
 
 def main():
@@ -183,6 +191,10 @@ def main():
     while True:
         # create array of odometry movements to show next to ground truth
         odometries = []
+    
+        # create array of pairs of robots that sent messages
+        long_range_measurements = []
+        short_range_measurements = []
 
         for i, (robot, motion) in enumerate(zip(robots, motions)):
 
@@ -200,15 +212,22 @@ def main():
                 motion2 = motions[j]
 
                 # Potentially exchange long / short messages.
-                do_long_range_message(config, robot1, robot2, motion1, motion2)
-                do_short_range_message(config, robot1, robot2, motion1, motion2)
+                did_short_range_comm = do_long_range_message(config, robot1, robot2, motion1, motion2)
+                did_long_range_comm = do_short_range_message(config, robot1, robot2, motion1, motion2)
+
+                # if we exchanged the messages, add the indices of the pair to the visualizer
+                if did_short_range_comm:
+                    short_range_measurements.append((i, j))
+                if did_long_range_comm:
+                    long_range_measurements.append((i, j))
+
 
         # Let each robot perform some computation at each time step.
         for robot in robots:
             robot.compute()
 
         # Perform visualization update.
-        vis.update(robots, motions, odometries)
+        vis.update(robots, motions, odometries, short_range_measurements, long_range_measurements)
 
         # As the final step of the loop, update the timestamp for each robot.
         for robot in robots:

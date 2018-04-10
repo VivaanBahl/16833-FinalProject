@@ -20,7 +20,21 @@ class Visualizer(object):
         plt.ion()
         plt.show()
 
-    def update(self, robots, motions, odometry):
+
+    def draw_messages(self, ax, motions, measurement_arr, color):
+        for (xmit_index, recv_index) in measurement_arr:
+            motion1 = motions[xmit_index]
+            motion2 = motions[recv_index]
+            pos1 = motion1.pos
+            pos2 = motion2.pos
+
+            arrow_origin = pos1
+            arrow_size = pos2 - pos1
+
+            ax.arrow(arrow_origin[0], arrow_origin[1], arrow_size[0], arrow_size[1], ec=color)
+
+
+    def update(self, robots, motions, odometry, short_range_measurements, long_range_measurements):
         """Perform visualization updates here."""
 
         self.logger.debug("Updating visualization.")
@@ -86,6 +100,10 @@ class Visualizer(object):
 
         # draw goals as green x's
         plt.scatter(x_goal, y_goal, c='g', marker='x')
+
+        # draw messages being sent between robots
+        self.draw_messages(ax, motions, short_range_measurements, 'r')
+        self.draw_messages(ax, motions, long_range_measurements, 'y')
 
         # calculate viewport bounds
         x_scale = x_max_coord - x_min_coord
