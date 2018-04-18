@@ -25,8 +25,6 @@ class Robot(object):
         self.config = config
         self.id = config['id']
         self.goal = config['goal']
-        self.pos = config['start'][1:]
-        self.th = config['start'][0]
         sigma_init = config['sigma_initial']
         self.sigma_init_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_init))
         sigma_odom = config['sigma_odom']
@@ -36,6 +34,7 @@ class Robot(object):
         self.start_pos = config['start']
         self.odom_measurements = []
         self.range_measurements = []
+        self.update_ids = dict()
         self.n_poses = {self.id : 1}
         self.pose_dim = 3
         self.odom_dim = 3
@@ -54,6 +53,49 @@ class Robot(object):
 
         self.max_iterations = 50
         self.stopping_threshold = 1e-6
+
+    @property
+    def pos(self):
+        start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
+        j0 = start + self.pose_dim * self.n_poses[self.id]
+        return self.x[j0 - 2:j0].flatten()
+
+    @property
+    def th(self):
+        start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
+        j0 = start + self.pose_dim * self.n_poses[self.id]
+        return self.x[j0 - 3]
+
+    def robot_pos(self, id, t = None):
+        """Return this robot's belief in the x,y position of the specified robot
+
+        Args:
+            id: The id of the robot whose position is being queried
+            t: If provided this function will return the belief of the robot's
+               position at time t
+
+        Returns:
+            The x,y position being queried
+        """
+        start = sum([self.n_poses[i] for i in self.n_poses if i < id])
+        j0 = start + self.pose_dim * self.n_poses[id]
+        return self.x[j0 - 2:j0].flatten()
+
+
+    def robot_th(self, id, t):
+        """Return this robot's belief in the angle of the specified robot
+
+        Args:
+            id: The id of the robot whose angle is being queried
+            t: If provided this function will return the belief of the robot's
+               angle at time t
+
+        Returns:
+            The angle being queried
+        """
+        start = sum([self.n_poses[i] for i in self.n_poses if i < id])
+        j0 = start + self.pose_dim * self.n_poses[id]
+        return self.x[j0 - 3]
 
 
     def wrapToPi(self, angle):
@@ -86,10 +128,14 @@ class Robot(object):
         if not other_id in self.n_poses:
           self.n_poses[other_id] = 0
         otherInd = self.n_poses[other_id]
+        """
+        self.update_ids[other_id] = (0, message.measurements)
         for i, r in enumerate(message.measurements):
           #measurements stored as (self_pose_index, other_id, other_pose_index,
           #                        sensor_index, range)
-          self.range_measurements.append((ind, other_id, otherInd, i, r))
+          meas = (ind, other_id, otherInd, i, r)
+          self.range_measurements.append(meas)
+        """
 
 
     def receive_odometry_message(self, message):
@@ -161,8 +207,6 @@ class Robot(object):
         return self.control_output
 
     def iterative_update(self,A,b):
-#        e_high = scipy.sparse.linalg.eigs(A, k=1, which='LM')[0]
-#        e_low = scipy.sparse.linalg.eigs(A, k=1, which='SM')[0]
         A_sp = csc_matrix(A.T.dot(A))
         A_splu = splu(A_sp)
         prev_x = self.x
@@ -257,6 +301,13 @@ class Robot(object):
 
         return A, b
 
+    def triangulate(self, measurements):
+        """Triangulate position of other robot based on sensor readings
+
+        This method is used to estimate an initial position for another robot
+        the first time it is seen
+        """
+        return np.array([[0, 0]]).T
 
     def compute(self):
         """Perform all the computation required to process messages.
@@ -267,24 +318,30 @@ class Robot(object):
         """
         self.logger.debug("Computing at time %d", self.t)
         #use previous pose as current pose estimate
-        self.x = np.vstack((self.x, self.x[-self.pose_dim:]))
+
+        start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
+        j0 = start + self.pose_dim * self.n_poses[self.id]
+        p_new = self.x[j0-self.pose_dim:j0]
+        self.x = np.insert(self.x, j0, p_new, axis=0)
         self.n_poses[self.id] += 1
 
-        #dir = np.array([[math.cos(self.th), math.sin(self.th)]]).T
-        #self.x[-self.pose_dim:-1] += self.control_output[0] * dir
-        #self.x[-1] = self.wrapToPi(self.x[-1] + self.control_output[1])
+        for other_id in self.update_ids.keys():
+            start = sum([self.n_poses[id] for id in self.n_poses if id < other_id])
+            j0 = start + self.pose_dim * self.n_poses[other_id]
+            if self.n_poses[other_id] == 0:
+                pos = self.triangulate(self.update_ids[other_id])
+                p_new = np.vstack((pos, [0]))
+            else:
+                p_new = self.x[j0-self.pose_dim:j0]
+            self.x = np.insert(self.x, j0, p_new, axis=0)
+            self.n_poses[other_id] += 1
+
 
         for i in range(0,self.max_iterations):
             A,b = self.build_system()
             if(not self.iterative_update(A,b)):
                 break
 
-        start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
-        j0 = start + self.pose_dim * (self.n_poses[self.id] - 1)
-        self.pos = self.x[j0 + 1:j0 + 3].flatten()
-        self.th = self.x[j0]
-#        self.pos += self.odom_measurements[-1][:2]
-#        self.th = self.wrapToPi(self.odom_measurements[-1][2])
 
     def step(self, step):
         """Increment the robot's internal time state by some step size.
