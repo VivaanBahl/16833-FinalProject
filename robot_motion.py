@@ -36,18 +36,17 @@ class RobotMotion(object):
         the ground truth will update. Based on the update, an odometry reading
         will be returned.
 
-        Control Input/Odometry Format:  [linear_velocity, angular_velocity]
+        Control Input/Odometry Format:  [x_dot, y_dot, th_dot]
 
         Returns:
             odometry measurement.
         """
 
         # Keep the ground truth perfect.
-        dir = np.array([math.cos(self.th), math.sin(self.th)])
-        self.vel = control_input[0] * dir
+        self.vel = control_input[1:]
         self.pos += self.vel
-        self.th += control_input[1]
+        self.th += control_input[0]
         self.th = (self.th + math.pi) % (2*math.pi) - math.pi
 
         # Odometry output has noise associated with it.
-        return control_input + np.random.normal(0, [0.1, .001])
+        return control_input + np.random.normal(0, [0.001, 0.01, .01])

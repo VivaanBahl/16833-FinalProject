@@ -47,7 +47,7 @@ class Robot(object):
         # Motion Controller Params, could be moved into config
         self.kp_pos = .1
         self.kp_th = 1
-        self.v_lin_max = .01
+        self.v_lin_max = 1
         self.v_th_max = math.pi / 128
 
         self.t = 0
@@ -96,13 +96,13 @@ class Robot(object):
         """Receive an odometry message to be able to sense the motion.
 
         This odometry measurement should be a result of the control output.
-        Odometry Format:  [linear_velocity, angular_velocity]
+        Odometry Format:  [th_dot, x_dot, y_dot]
 
         Args:
             message: Odometry measurement as a result of control output.
         """
         self.logger.debug("Received odometry message %s", message)
-        self.odom_measurements.append(message)
+        self.odom_measurements.append(np.expand_dims(message, axis=1))
 
 
     def get_short_range_message(self):
@@ -152,23 +152,22 @@ class Robot(object):
 
         #compute position and orientation errors relative to goal
         d_pos = self.goal - self.pos
-        goal_th = math.atan2(d_pos[1], d_pos[0])
-        d_th = (goal_th - self.th + math.pi) % (2*math.pi) - math.pi
 
         #Use proportional controllers on linear and angular velocity
-        v_lin = min(self.kp_pos * np.linalg.norm(d_pos), self.v_lin_max)
-        v_th = min(self.kp_th * d_th, self.v_th_max)
-        self.control_output = np.array([v_lin, v_th])
+        scale = self.v_lin_max / np.abs(d_pos).max()
+        v_lin = d_pos if scale > 1 else d_pos * scale
+        self.control_output = np.hstack(([0], v_lin))
         self.logger.debug("Returning control output %s", self.control_output)
         return self.control_output
 
     def iterative_update(self,A,b):
-        e_high = scipy.sparse.linalg.eigs(A, k=1, which='LM')[0]
-        e_low = scipy.sparse.linalg.eigs(A, k=1, which='SM')[0]
+#        e_high = scipy.sparse.linalg.eigs(A, k=1, which='LM')[0]
+#        e_low = scipy.sparse.linalg.eigs(A, k=1, which='SM')[0]
         A_sp = csc_matrix(A.T.dot(A))
         A_splu = splu(A_sp)
         prev_x = self.x
-        self.x = A_splu.solve(A.T.dot(b))
+        dx = A_splu.solve(A.T.dot(b))
+        self.x = prev_x + dx
 
         if(euclidean(self.x.T,prev_x) < self.stopping_threshold):
             return False
@@ -184,28 +183,24 @@ class Robot(object):
         Returns:
             Number of rows in this block
         """
-        for i, (v, w) in enumerate(self.odom_measurements):
+        for i, m in enumerate(self.odom_measurements):
             start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
             j0 = self.pose_dim * (i + start)
             j1 = self.pose_dim * (i + 1 + start)
             p0 = self.x[j0:j0 + self.pose_dim]
             p1 = self.x[j1:j1 + self.pose_dim]
-            eps = 1e-7
-            th = math.atan2(p1[2] - p0[2] + eps, p1[1] - p0[1] + eps)
-            a0 = self.wrapToPi(th - p0[0])
-            l = math.sqrt((p1[1] - p0[1] + eps)**2 + (p1[2] - p0[2] + eps)**2)
-            a1 = self.wrapToPi(p1[0] - th)
-            H = np.array([[-1, (p0[2] - p1[2] + eps) / l**2, (p0[1] - p1[1] + eps) / l**2,
-                           0, (p1[2] - p0[2] + eps) / l**2, (p1[1] - p0[1] + eps) / l**2],
-                          [0, (p0[1] - p1[1] + eps) / l, (p0[2] - p1[2] + eps) / l,
-                           0, (p1[1] - p0[1] + eps) / l, (p1[2] - p0[2] + eps) / l],
-                          [0, (p1[2] - p0[2] + eps) / l**2, (p1[1] - p0[1] + eps) / l**2,
-                           1, (p0[2] - p1[2] + eps) / l**2, (p0[1] - p1[1] + eps) / l**2]])
+            H = np.array([[-1, 0, 0, 1, 0, 0],
+                          [0, -1, 0, 0, 1, 0],
+                          [0, 0, -1, 0, 0, 1]])
             H = self.sigma_odom_inv.dot(H)
             A[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), j0:j0 + self.pose_dim] = H[:, :self.pose_dim]
             A[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), j1:j1 + self.pose_dim] = H[:, self.pose_dim:]
             #TODO: odom measurements should be multiplied by dt
-            b[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), 0] = [self.wrapToPi(0 - a0), v - l, self.wrapToPi(w - a1)]
+            mPred = p1 - p0
+            mPred[0] = self.wrapToPi(mPred[0])
+            dz = m - mPred
+            dz[0] = self.wrapToPi(dz[0])
+            b[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), 0] = dz.flatten()
         return self.odom_dim * len(self.odom_measurements)
 
 
@@ -275,9 +270,9 @@ class Robot(object):
         self.x = np.vstack((self.x, self.x[-self.pose_dim:]))
         self.n_poses[self.id] += 1
 
-        dir = np.array([[math.cos(self.th), math.sin(self.th)]]).T
-        self.x[-self.pose_dim:-1] += self.control_output[0] * dir
-        self.x[-1] = self.wrapToPi(self.x[-1] + self.control_output[1])
+        #dir = np.array([[math.cos(self.th), math.sin(self.th)]]).T
+        #self.x[-self.pose_dim:-1] += self.control_output[0] * dir
+        #self.x[-1] = self.wrapToPi(self.x[-1] + self.control_output[1])
 
         for i in range(0,self.max_iterations):
             A,b = self.build_system()
@@ -288,6 +283,8 @@ class Robot(object):
         j0 = start + self.pose_dim * (self.n_poses[self.id] - 1)
         self.pos = self.x[j0 + 1:j0 + 3].flatten()
         self.th = self.x[j0]
+#        self.pos += self.odom_measurements[-1][:2]
+#        self.th = self.wrapToPi(self.odom_measurements[-1][2])
 
     def step(self, step):
         """Increment the robot's internal time state by some step size.
