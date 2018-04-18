@@ -163,12 +163,11 @@ class Robot(object):
         return self.control_output
 
     def iterative_update(self,A,b):
-        e_high = scipy.sparse.linalg.eigs(A, k=1, which='LM')[0]
-        e_low = scipy.sparse.linalg.eigs(A, k=1, which='SM')[0]
         A_sp = csc_matrix(A.T.dot(A))
         A_splu = splu(A_sp)
         prev_x = self.x
-        self.x = A_splu.solve(A.T.dot(b))
+        dx = A_splu.solve(A.T.dot(b))
+        self.x += dx
 
         if(euclidean(self.x.T,prev_x) < self.stopping_threshold):
             return False
