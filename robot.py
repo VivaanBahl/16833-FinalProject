@@ -47,8 +47,8 @@ class Robot(object):
         # Motion Controller Params, could be moved into config
         self.kp_pos = .1
         self.kp_th = 1
-        self.v_lin_max = 10
-        self.v_th_max = math.pi / 16
+        self.v_lin_max = .01
+        self.v_th_max = math.pi / 128
 
         self.t = 0
 
@@ -158,11 +158,13 @@ class Robot(object):
         #Use proportional controllers on linear and angular velocity
         v_lin = min(self.kp_pos * np.linalg.norm(d_pos), self.v_lin_max)
         v_th = min(self.kp_th * d_th, self.v_th_max)
-        control_output = np.array([v_lin, v_th])
-        self.logger.debug("Returning control output %s", control_output)
-        return control_output
+        self.control_output = np.array([v_lin, v_th])
+        self.logger.debug("Returning control output %s", self.control_output)
+        return self.control_output
 
     def iterative_update(self,A,b):
+        e_high = scipy.sparse.linalg.eigs(A, k=1, which='LM')[0]
+        e_low = scipy.sparse.linalg.eigs(A, k=1, which='SM')[0]
         A_sp = csc_matrix(A.T.dot(A))
         A_splu = splu(A_sp)
         prev_x = self.x
@@ -244,8 +246,7 @@ class Robot(object):
     def build_system(self):
         """Build A and b linearized around the current state
         """
-        M = len(self.odom_measurements) * self.odom_dim + \
-            self.pose_dim
+        M = len(self.odom_measurements) * self.odom_dim + self.pose_dim
             #len(self.range_measurements) * self.range_dim + \
         N = sum(self.n_poses.values()) * self.pose_dim
         A = scipy.sparse.lil_matrix((M, N))
@@ -274,19 +275,19 @@ class Robot(object):
         self.x = np.vstack((self.x, self.x[-self.pose_dim:]))
         self.n_poses[self.id] += 1
 
-        dir = np.array([math.cos(self.th), math.sin(self.th)])
-        self.pos += self.odom_measurements[-1][0] * dir
-        self.th += self.odom_measurements[-1][1]
+        dir = np.array([[math.cos(self.th), math.sin(self.th)]]).T
+        self.x[-self.pose_dim:-1] += self.control_output[0] * dir
+        self.x[-1] = self.wrapToPi(self.x[-1] + self.control_output[1])
 
-#        for i in range(0,self.max_iterations):
-#            A,b = self.build_system()
-#            if(not self.iterative_update(A,b)):
-#                break
-#
-#        start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
-#        j0 = start + self.pose_dim * (self.n_poses[self.id] - 1)
-#        self.pos = self.x[j0 + 1:j0 + 3].flatten()
-#        self.th = self.x[j0]
+        for i in range(0,self.max_iterations):
+            A,b = self.build_system()
+            if(not self.iterative_update(A,b)):
+                break
+
+        start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
+        j0 = start + self.pose_dim * (self.n_poses[self.id] - 1)
+        self.pos = self.x[j0 + 1:j0 + 3].flatten()
+        self.th = self.x[j0]
 
     def step(self, step):
         """Increment the robot's internal time state by some step size.
