@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import numpy as np
 import logging
 
 
@@ -52,6 +53,9 @@ class Visualizer(object):
         y_goal = []
         headings = []
 
+        # create square matrix showing all the robots' beliefs about each other
+        robot_beliefs = np.zeros([len(robots), len(robots), 2])  # 2 bc of x and y
+
         # default viewport for the visualizer
         x_min_coord = 0
         x_max_coord = 0
@@ -69,6 +73,12 @@ class Visualizer(object):
             goal = robot.goal
             x_goal.append(goal[0])
             y_goal.append(goal[1])
+
+            for other_robot_id in range(0, len(robots)):
+                (other_bel_x, other_bel_y) = robot.robot_pos(other_robot_id)
+                if other_bel_x is not None:
+                    robot_beliefs[i, other_robot_id, 0] = other_bel_x
+                    robot_beliefs[i, other_robot_id, 1] = other_bel_y
 
             vel = motion.vel
             headings.append((vel[0], vel[1]))
@@ -90,8 +100,17 @@ class Visualizer(object):
         # draw robots ground truth
         plt.scatter(x_robot_gt, y_robot_gt, c='k', marker='o')
 
-        # draw the robot's belief
-        plt.scatter(x_robot_pre, y_robot_pre, c='b', marker='o')
+        # draw the robot belief as their own individual colors
+        # plt.scatter(x_robot_pre, y_robot_pre, c='b', marker='o')
+        for i in range(0, len(robots)):
+            robot_i_beliefs_x = robot_beliefs[i, :, 0]
+            robot_i_beliefs_y = robot_beliefs[i, :, 1]
+            plt.scatter(robot_i_beliefs_x, robot_i_beliefs_y, marker='o')
+
+        robot_legend_labels = ["Robot {} beliefs".format(i) for i in range(0, len(robots))]
+        robot_legend_labels = ["Ground Truths"] + robot_legend_labels
+        plt.legend(robot_legend_labels)
+
 
         # draw "headings" aka the velocity vectors
         ax = plt.axes()

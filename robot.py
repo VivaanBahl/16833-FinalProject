@@ -79,6 +79,8 @@ class Robot(object):
         """
         start = sum([self.n_poses[i] for i in self.n_poses if i < id])
         j0 = start + self.pose_dim * self.n_poses[id]
+        if self.n_poses[id] == 0:
+            return np.array([None, None])
         return self.x[j0 - 2:j0].flatten()
 
 
