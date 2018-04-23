@@ -61,7 +61,7 @@ class Robot(object):
         start = sum([self.n_poses[id] for id in self.n_poses if id < robot_id])
 
         #returns the index of the first state element of the first pose after ours
-        j0 = start + self.pose_dim * self.n_poses[self.id]
+        j0 = start + self.pose_dim * self.n_poses[robot_id]
         return j0
 
     @property
@@ -85,7 +85,9 @@ class Robot(object):
         Returns:
             The x,y position being queried
         """
-        j0 = self.start_of_next_robot(self.id)
+        j0 = self.start_of_next_robot(id)
+        if self.n_poses[id] == 0:
+            return np.array([None, None])
         return self.x[j0 - 2:j0].flatten()
 
 
@@ -100,7 +102,7 @@ class Robot(object):
         Returns:
             The angle being queried
         """
-        j0 = self.start_of_next_robot(self.id)
+        j0 = self.start_of_next_robot(id)
         return self.x[j0 - 3]
 
 
