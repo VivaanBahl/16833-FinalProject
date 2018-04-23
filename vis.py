@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import logging
+import disturbances as db
 
 
 class Visualizer(object):
@@ -89,13 +90,20 @@ class Visualizer(object):
 
             # if a target is outside of the viewport, set viewport to include it
             if pos[0] < x_min_coord or goal[0] < x_min_coord:
-                x_min_coord = min(pos[0], goal[0])
+                x_min_coord = min(pos[0], goal[0]) - 5
             if pos[0] > x_max_coord or goal[0] > x_max_coord:
-                x_max_coord = max(pos[0], goal[0])
+                x_max_coord = max(pos[0], goal[0]) + 5
             if pos[1] < y_min_coord or goal[1] < y_min_coord:
-                y_min_coord = min(pos[1], goal[1])
+                y_min_coord = min(pos[1], goal[1]) - 5
             if pos[1] > y_max_coord or goal[1] > y_max_coord:
-                y_max_coord = max(pos[1], goal[1])
+                y_max_coord = max(pos[1], goal[1]) + 5
+
+        #draw force fields
+        X, Y = np.meshgrid(np.arange(x_min_coord, x_max_coord, (x_max_coord - x_min_coord)/50), np.arange(y_min_coord, y_max_coord, (y_max_coord - y_min_coord)/50))
+        U = db.linear(0*X,X,Y)[1]
+        V = db.linear(0*X,X,Y)[2]
+        Q = plt.quiver(X, Y, U, V, units='width')
+
 
         # draw robots ground truth
         plt.scatter(x_robot_gt, y_robot_gt, c='k', marker='o')
