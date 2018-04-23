@@ -35,7 +35,7 @@ class Robot(object):
         self.odom_measurements = []
         self.range_measurements = []
         self.update_ids = dict()
-        self.n_poses = {self.id : 1}
+        self.n_poses = {self.id : 1} #the count of the number of poses for each robot
         self.pose_dim = 3
         self.odom_dim = 3
         self.range_dim = 1
@@ -54,16 +54,24 @@ class Robot(object):
         self.max_iterations = 50
         self.stopping_threshold = 1e-6
 
+    def start_of_next_robot(self,robot_id):
+        #count all the poses until "this" robot's is reached.
+        #This could require counting all the robots before you (id < self.id)
+        #and all of their respective poses (sum())
+        start = sum([self.n_poses[id] for id in self.n_poses if id < robot_id])
+
+        #returns the index of the first state element of the first pose after ours
+        j0 = start + self.pose_dim * self.n_poses[self.id]
+        return j0
+
     @property
     def pos(self):
-        start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
-        j0 = start + self.pose_dim * self.n_poses[self.id]
+        j0 = self.start_of_next_robot(self.id)
         return self.x[j0 - 2:j0].flatten()
 
     @property
     def th(self):
-        start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
-        j0 = start + self.pose_dim * self.n_poses[self.id]
+        j0 = self.start_of_next_robot(self.id)
         return self.x[j0 - 3]
 
     def robot_pos(self, id, t = None):
@@ -77,8 +85,7 @@ class Robot(object):
         Returns:
             The x,y position being queried
         """
-        start = sum([self.n_poses[i] for i in self.n_poses if i < id])
-        j0 = start + self.pose_dim * self.n_poses[id]
+        j0 = self.start_of_next_robot(self.id)
         return self.x[j0 - 2:j0].flatten()
 
 
@@ -93,8 +100,7 @@ class Robot(object):
         Returns:
             The angle being queried
         """
-        start = sum([self.n_poses[i] for i in self.n_poses if i < id])
-        j0 = start + self.pose_dim * self.n_poses[id]
+        j0 = self.start_of_next_robot(self.id)
         return self.x[j0 - 3]
 
 
@@ -319,15 +325,13 @@ class Robot(object):
         self.logger.debug("Computing at time %d", self.t)
         #use previous pose as current pose estimate
 
-        start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
-        j0 = start + self.pose_dim * self.n_poses[self.id]
+        j0 = self.start_of_next_robot(self.id)
         p_new = self.x[j0-self.pose_dim:j0]
         self.x = np.insert(self.x, j0, p_new, axis=0)
         self.n_poses[self.id] += 1
 
         for other_id in self.update_ids.keys():
-            start = sum([self.n_poses[id] for id in self.n_poses if id < other_id])
-            j0 = start + self.pose_dim * self.n_poses[other_id]
+            j0 = self.start_of_next_robot(other_id)
             if self.n_poses[other_id] == 0:
                 pos = self.triangulate(self.update_ids[other_id])
                 p_new = np.vstack((pos, [0]))
