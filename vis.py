@@ -102,7 +102,7 @@ class Visualizer(object):
         X, Y = np.meshgrid(np.arange(x_min_coord, x_max_coord, (x_max_coord - x_min_coord)/50), np.arange(y_min_coord, y_max_coord, (y_max_coord - y_min_coord)/50))
         U = db.linear(0*X,X,Y)[1]
         V = db.linear(0*X,X,Y)[2]
-        Q = plt.quiver(X, Y, U, V, units='width')
+        Q = plt.quiver(X, Y, U, V, units='width', color=(0.0, 0.0, 0.0, 0.3))
 
 
         # draw robots ground truth
@@ -116,7 +116,7 @@ class Visualizer(object):
             plt.scatter(robot_i_beliefs_x, robot_i_beliefs_y, marker='o')
 
         robot_legend_labels = ["Robot {} beliefs".format(i) for i in range(0, len(robots))]
-        robot_legend_labels = ["Ground Truths"] + robot_legend_labels
+        robot_legend_labels = ["Disturbance Field", "Ground Truths"] + robot_legend_labels
         plt.legend(robot_legend_labels)
 
 
