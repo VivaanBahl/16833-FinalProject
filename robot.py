@@ -65,25 +65,26 @@ class Robot(object):
         self.max_iterations = 50
         self.stopping_threshold = 1e-6
 
-    def start_of_next_robot(self,robot_id):
+    def last_pose_ind(self, robot_id):
         #count all the poses until "this" robot's is reached.
         #This could require counting all the robots before you (id < self.id)
         #and all of their respective poses (sum())
         start = sum([self.n_poses[id] for id in self.n_poses if id < robot_id])
 
-        #returns the index of the first state element of the first pose after ours
-        j0 = start + self.pose_dim * self.n_poses[robot_id]
+        #returns the index of the first state element of the last pose for this
+        #robot
+        j0 = start + self.pose_dim * (self.n_poses[robot_id] - 1)
         return j0
 
     @property
     def pos(self):
-        j0 = self.start_of_next_robot(self.id)
-        return self.x[j0 - 2:j0].flatten()
+        j0 = self.last_pose_ind(self.id)
+        return self.x[j0 + 1:j0 + 3].flatten()
 
     @property
     def th(self):
-        j0 = self.start_of_next_robot(self.id)
-        return self.x[j0 - 3]
+        j0 = self.last_pose_ind(self.id)
+        return self.x[j0]
 
     def robot_pos(self, id, t = None):
         """Return this robot's belief in the x,y position of the specified robot
@@ -99,13 +100,13 @@ class Robot(object):
         """
         if not id in self.n_poses:
           return (None, None)
-        j0 = self.start_of_next_robot(id)
+        j0 = self.last_pose_ind(id)
         if self.n_poses[id] == 0:
             return np.array([None, None])
-        return self.x[j0 - 2:j0].flatten()
+        return self.x[j0 + 1:j0 + 3].flatten()
 
 
-    def robot_th(self, id, t):
+    def robot_th(self, id, t = None):
         """Return this robot's belief in the angle of the specified robot
 
         Args:
@@ -114,13 +115,16 @@ class Robot(object):
                angle at time t
 
         Returns:
-            The angle being queried
+            The angle being queried, or None if the specified robot hasn't been
+            seen yet
         """
-        j0 = self.start_of_next_robot(id)
-        return self.x[j0 - 3]
+        if not id in self.n_poses:
+          return None
+        j0 = self.last_pose_ind(id)
+        return self.x[j0]
 
 
-    def wrapToPi(self, angle):
+    def wrap_to_pi(self, angle):
         """Wrap a measurement in radians to [-pi, pi]"""
         return (angle + math.pi) % (2 * math.pi) - math.pi
 
@@ -232,7 +236,7 @@ class Robot(object):
         self.logger.debug("Returning control output %s", self.control_output)
         return self.control_output
 
-    def iterative_update(self,A,b):
+    def iterative_update(self, A, b):
         A_sp = csc_matrix(A.T.dot(A))
         A_splu = splu(A_sp)
         prev_x = self.x
@@ -267,9 +271,9 @@ class Robot(object):
             A[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), j1:j1 + self.pose_dim] = H[:, self.pose_dim:]
             #TODO: odom measurements should be multiplied by dt
             mPred = p1 - p0
-            mPred[0] = self.wrapToPi(mPred[0])
+            mPred[0] = self.wrap_to_pi(mPred[0])
             dz = m - mPred
-            dz[0] = self.wrapToPi(dz[0])
+            dz[0] = self.wrap_to_pi(dz[0])
             b[i0 + self.odom_dim*i:i0 + self.odom_dim*(i + 1), 0] = dz.flatten()
         return self.odom_dim * len(self.odom_measurements)
 
@@ -336,9 +340,9 @@ class Robot(object):
                 A[i:i + self.odom_dim, j0:j0 + self.pose_dim] = H[:, :self.pose_dim]
                 A[i:i + self.odom_dim, j1:j1 + self.pose_dim] = H[:, self.pose_dim:]
                 mPred = p1 - p0
-                mPred[0] = self.wrapToPi(mPred[0])
+                mPred[0] = self.wrap_to_pi(mPred[0])
                 dz = -mPred
-                dz[0] = self.wrapToPi(dz[0])
+                dz[0] = self.wrap_to_pi(dz[0])
                 b[i:i + self.odom_dim, 0] = dz.flatten()
                 i += self.odom_dim
         return i - i0
@@ -429,13 +433,14 @@ class Robot(object):
         perform all of the SLAM updates.
         """
         self.logger.debug("Computing at time %d", self.t)
-        #use previous pose as current pose estimate
 
-        j0 = self.start_of_next_robot(self.id)
-        p_new = self.x[j0-self.pose_dim:j0]
-        self.x = np.insert(self.x, j0, p_new, axis=0)
+        #use previous pose as current pose estimate
+        j0 = self.last_pose_ind(self.id)
+        p_new = self.x[j0:j0+self.pose_dim]
+        self.x = np.insert(self.x, j0+self.pose_dim, p_new, axis=0)
         self.n_poses[self.id] += 1
 
+        #Try to estimate the initial position of newly visible robots
         done_triangulating = []
         for other_id in self.initial_ranges.keys():
             pos = self.triangulate(self.initial_ranges[other_id])
@@ -459,9 +464,9 @@ class Robot(object):
             del self.initial_ranges[id]
 
         for other_id in self.update_ids:
-            j0 = self.start_of_next_robot(other_id)
-            p_new = self.x[j0-self.pose_dim:j0]
-            self.x = np.insert(self.x, j0, p_new, axis=0)
+            j0 = self.last_pose_ind(other_id)
+            p_new = self.x[j0:j0+self.pose_dim]
+            self.x = np.insert(self.x, j0 + self.pose_dim, p_new, axis=0)
             self.n_poses[other_id] += 1
 
         for i in range(0,self.max_iterations):
