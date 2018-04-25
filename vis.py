@@ -116,7 +116,7 @@ class Visualizer(object):
             plt.scatter(robot_i_beliefs_x, robot_i_beliefs_y, marker='o')
 
         robot_legend_labels = ["Robot {} beliefs".format(i) for i in range(0, len(robots))]
-        robot_legend_labels = ["Ground Truths"] + robot_legend_labels
+        robot_legend_labels = ["Disturbance Field", "Ground Truths"] + robot_legend_labels
         plt.legend(robot_legend_labels)
 
 
