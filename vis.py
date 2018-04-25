@@ -102,7 +102,7 @@ class Visualizer(object):
         X, Y = np.meshgrid(np.arange(x_min_coord, x_max_coord, (x_max_coord - x_min_coord)/50), np.arange(y_min_coord, y_max_coord, (y_max_coord - y_min_coord)/50))
         U = db.linear(0*X,X,Y)[1]
         V = db.linear(0*X,X,Y)[2]
-        Q = plt.quiver(X, Y, U, V, units='width')
+        Q = plt.quiver(X, Y, U, V, units='width', color=(0.0, 0.0, 0.0, 0.3))
 
 
         # draw robots ground truth
