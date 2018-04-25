@@ -62,6 +62,7 @@ def initialize_robots_and_motions(config):
         robot_config['id'] = i
         robot_config['sigma_initial'] = config['sigma_initial']
         robot_config['sigma_odom'] = config['sigma_odom']
+        robot_config['sigma_range'] = config['sigma_range']
         robot_config['sensor_parameters'] = config['sensor_parameters']
 
         # Make everything a numpy array.
@@ -138,7 +139,7 @@ def do_long_range_message(config, robot1, robot2, motion1, motion2):
         # modify some state inside the robot.
         robot1.receive_long_range_message(message2to1)
         robot2.receive_long_range_message(message1to2)
-        
+
         # indicate whether these two robots communicated
         return True
     return False
@@ -170,7 +171,7 @@ def do_short_range_message(config, robot1, robot2, motion1, motion2):
         # And then transmit both of the messages.
         robot1.receive_short_range_message(message2to1)
         robot2.receive_short_range_message(message1to2)
-        
+
         # indicate whether the two robots communicated
         return True
     return False

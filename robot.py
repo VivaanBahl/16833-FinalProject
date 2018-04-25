@@ -2,6 +2,7 @@ import logging
 import math
 import numpy as np
 import scipy.linalg
+import os
 
 from scipy import linalg
 from scipy.sparse import csc_matrix
@@ -20,6 +21,7 @@ class Robot(object):
             config: Configuration file.
         """
         self.logger = logging.getLogger("Robot %d" % config['id'])
+        np.set_printoptions(precision=3, linewidth=os.get_terminal_size().columns)
 
         self.logger.info("Initializing with config %s", config)
         self.config = config
@@ -29,16 +31,25 @@ class Robot(object):
         self.sigma_init_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_init))
         sigma_odom = config['sigma_odom']
         self.sigma_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_odom))
+        self.sigma_other_odom_inv = self.sigma_odom_inv
+        sigma_range = config['sigma_range']
+        self.sigma_range_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_range))
         self.sensor_deltas = [np.array(s['delta']) for s in config['sensor_parameters']]
 
         self.start_pos = config['start']
         self.odom_measurements = []
         self.range_measurements = []
-        self.update_ids = dict()
+
+        #buffer of range measurements received before successfully triangulating
+        #an initial pose
+        self.initial_ranges = dict()
+        #robots we've received new measurements of
+        self.update_ids = set()
         self.n_poses = {self.id : 1}
         self.pose_dim = 3
         self.odom_dim = 3
         self.range_dim = 1
+        self.fake_thetas = True
 
         self.x = np.zeros((self.pose_dim, 1))
         self.x[:, 0] = (self.th, self.pos[0], self.pos[1])
@@ -126,16 +137,20 @@ class Robot(object):
         other_id = message.data['id']
         ind = self.n_poses[self.id]
         if not other_id in self.n_poses:
-          self.n_poses[other_id] = 0
-        otherInd = self.n_poses[other_id]
-        """
-        self.update_ids[other_id] = (0, message.measurements)
-        for i, r in enumerate(message.measurements):
-          #measurements stored as (self_pose_index, other_id, other_pose_index,
-          #                        sensor_index, range)
-          meas = (ind, other_id, otherInd, i, r)
-          self.range_measurements.append(meas)
-        """
+            #don't have an initial estimate yet, so buffer measurements until we
+            #can successfully triangulate
+            if not other_id in self.initial_ranges.keys():
+              self.initial_ranges[other_id] = []
+            for i, r in enumerate(message.measurements):
+              self.initial_ranges[other_id].append((ind, i, r))
+        elif False:
+            self.update_ids.add(other_id)
+            other_ind = self.n_poses[other_id]
+            for i, r in enumerate(message.measurements):
+                #measurements stored as (self_pose_index, other_id,
+                #                        other_pose_index, sensor_index, range)
+                meas = (ind, other_id, other_ind, i, r)
+                self.range_measurements.append(meas)
 
 
     def receive_odometry_message(self, message):
@@ -260,33 +275,88 @@ class Robot(object):
 
         """
         for i, (ind, other_id, other_ind, si, rMeas) in enumerate(self.range_measurements):
-            start = sum([self.n_poses[id] for id in self.poses if id < self.id])
-            other_start = sum([self.n_poses[id] for id in self.poses if id < other_id])
+            start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
+            other_start = sum([self.n_poses[id] for id in self.n_poses if id < other_id])
             j0 = self.pose_dim * (ind + start)
             j1 = self.pose_dim * (other_ind + other_start)
             p0 = self.x[j0:j0 + self.pose_dim]
             p1 = self.x[j1:j1 + self.pose_dim]
-            th = p0[0]
+            th = p0[0, 0]
             R = np.array([[np.cos(th), -np.sin(th)],
                           [np.sin(th),  np.cos(th)]])
 
             delta = self.sensor_deltas[si]
-            d = p0[1:] + R.dot(delta) - p0[1:]
+            d = p0[1:, 0] + R.dot(delta) - p1[1:, 0]
             r = np.linalg.norm(d)
             H = np.array([[(d[0] * (-delta[0]*np.sin(th) - delta[1]*np.cos(th)) +
                             d[1] * (delta[0]*np.cos(th) - delta[1]*np.sin(th))) / r,
                            d[0] / r, d[1] / r,  0, -d[0] / r, -d[1] / r]])
             H = self.sigma_range_inv.dot(H)
-            A[i0 + self.range_dim*i:i0 + self.range_dim*(i+1), j0:j0 + self.pose_dim] = H[:, :self.pose_dim]
-            A[i0 + self.range_dim*i:i0 + self.range_dim*(i+1), j1:j1 + self.pose_dim] = H[:, self.pose_dim:]
+            A[i0 + self.range_dim*i:i0 + self.range_dim*(i+1), j0:j0 + self.pose_dim] = H[0, :self.pose_dim]
+            A[i0 + self.range_dim*i:i0 + self.range_dim*(i+1), j1:j1 + self.pose_dim] = H[0, self.pose_dim:]
             b[i0 + self.range_dim*i:i0 + self.range_dim*(i+1), 0] = rMeas - r
+        return self.range_dim * len(self.range_measurements)
+
+
+    def build_other_odom_system(self, A, b, i0):
+        """builds the block of A and b corresponding to odometry measurements
+        Args:
+            A: Linear system being built
+            b: Error vector
+            i0: row at which to insert this block
+
+        Returns:
+            Number of rows in this block
+        """
+        i = i0
+        for id in self.n_poses:
+            if id == self.id:
+                continue
+            start = sum([self.n_poses[_id] for _id in self.n_poses if _id < id])
+            for n in range(self.n_poses[id] - 1):
+                j0 = self.pose_dim * (start + n)
+                j1 = self.pose_dim * (start + n + 1)
+                p0 = self.x[j0:j0 + self.pose_dim]
+                p1 = self.x[j1:j1 + self.pose_dim]
+                H = np.array([[-1, 0, 0, 1, 0, 0],
+                              [0, -1, 0, 0, 1, 0],
+                              [0, 0, -1, 0, 0, 1]])
+                H = self.sigma_other_odom_inv.dot(H)
+                A[i:i + self.odom_dim, j0:j0 + self.pose_dim] = H[:, :self.pose_dim]
+                A[i:i + self.odom_dim, j1:j1 + self.pose_dim] = H[:, self.pose_dim:]
+                mPred = p1 - p0
+                mPred[0] = self.wrapToPi(mPred[0])
+                dz = -mPred
+                dz[0] = self.wrapToPi(dz[0])
+                b[i:i + self.odom_dim, 0] = dz.flatten()
+                i += self.odom_dim
+        return i - i0
+
+
+    def build_theta_priors(self, A, b, i0):
+        """Put priors on the orientations of other robots so the system is fully
+        constrained. Should only use when sensor measurements are insufficient
+        to figure out the orientation
+        """
+        i = i0
+        for id in self.n_poses:
+            if id == self.id:
+                continue
+            start = sum([self.n_poses[_id] for _id in self.n_poses if _id < id])
+            j0 = self.pose_dim * start
+            A[i, j0] = 1
+            i += 1
+        return i - i0
 
 
     def build_system(self):
         """Build A and b linearized around the current state
         """
-        M = len(self.odom_measurements) * self.odom_dim + self.pose_dim
-            #len(self.range_measurements) * self.range_dim + \
+        M = len(self.odom_measurements) * self.odom_dim + self.pose_dim + \
+            len(self.range_measurements) * self.range_dim + \
+            (sum(self.n_poses.values()) - self.n_poses[self.id] - len(self.n_poses) + 1) * self.odom_dim
+        if self.fake_thetas:
+            M += len(self.n_poses) - 1 # -1 for this robot
         N = sum(self.n_poses.values()) * self.pose_dim
         A = scipy.sparse.lil_matrix((M, N))
         b = np.zeros((M, 1))
@@ -296,8 +366,12 @@ class Robot(object):
         b[:self.pose_dim, 0] = self.start_pos
 
         i0 = self.pose_dim
+        if self.fake_thetas:
+          i0 += self.build_theta_priors(A, b, i0)
         i0 += self.build_odom_system(A, b, i0)
-        #i0 += self.build_range_system(A, b, i0)
+        i0 += self.build_other_odom_system(A, b, i0)
+        i0 += self.build_range_system(A, b, i0)
+        #print(A.toarray())
 
         return A, b
 
@@ -307,7 +381,34 @@ class Robot(object):
         This method is used to estimate an initial position for another robot
         the first time it is seen
         """
-        return np.array([[0, 0]]).T
+        if len(measurements) < 3:
+          return None
+        start = sum([self.n_poses[id] for id in self.n_poses if id < self.id])
+        A = np.zeros((len(measurements) - 1, 2))
+        b = np.zeros((len(measurements) - 1, 1))
+
+        #Find x_n, y_n, r_n
+        ind_n, si_n, r_n = measurements[-1]
+        delta = self.sensor_deltas[si_n]
+        th_n = self.x[start + self.pose_dim * ind_n, 0]
+        R = np.array([[np.cos(th_n), -np.sin(th_n)],
+                      [np.sin(th_n),  np.cos(th_n)]])
+        d = R.dot(delta)
+        x_n = self.x[start + self.pose_dim * ind_n + 1] + d[0]
+        y_n = self.x[start + self.pose_dim * ind_n + 2] + d[1]
+
+        for i, (ind, si, r) in enumerate(measurements[:-1]):
+            delta = self.sensor_deltas[si]
+            th = self.x[start + self.pose_dim * ind, 0]
+            R = np.array([[np.cos(th), -np.sin(th)],
+                          [np.sin(th),  np.cos(th)]])
+            d = R.dot(delta)
+            x = self.x[start + self.pose_dim * ind + 1] + d[0]
+            y = self.x[start + self.pose_dim * ind + 2] + d[1]
+            A[i, :] = (x_n - x, y_n - y)
+            b[i] = r**2 - r_n**2 - x**2 + x_n**2 - y**2 + y_n**2
+
+        return np.linalg.lstsq(A, b)[0]
 
     def compute(self):
         """Perform all the computation required to process messages.
@@ -325,22 +426,44 @@ class Robot(object):
         self.x = np.insert(self.x, j0, p_new, axis=0)
         self.n_poses[self.id] += 1
 
-        for other_id in self.update_ids.keys():
+        done_triangulating = []
+        for other_id in self.initial_ranges.keys():
+            pos = self.triangulate(self.initial_ranges[other_id])
+            if pos is not None: #Triangulation was successful
+                done_triangulating.append(other_id)
+                #Use pos as initial state estimate (set th = 0)
+                start = sum([self.n_poses[id] for id in self.n_poses if id < other_id])
+                self.x = np.insert(self.x, start, np.vstack((pos, [0])), axis=0)
+                self.n_poses[other_id] = 1
+
+                #Use the most recent measurement for SLAM
+                ind = self.n_poses[self.id] - 1
+                measurements = [(i, r) for ind0, i, r in self.initial_ranges[other_id] if ind0 == ind]
+                for i, r in measurements:
+                    #measurements stored as (self_pose_index, other_id,
+                    #                        other_pose_index, sensor_index,
+                    #                        range)
+                    meas = (ind, other_id, 0, i, r)
+                    self.range_measurements.append(meas)
+        for id in done_triangulating:
+            del self.initial_ranges[id]
+
+        for other_id in self.update_ids:
             start = sum([self.n_poses[id] for id in self.n_poses if id < other_id])
             j0 = start + self.pose_dim * self.n_poses[other_id]
-            if self.n_poses[other_id] == 0:
-                pos = self.triangulate(self.update_ids[other_id])
-                p_new = np.vstack((pos, [0]))
-            else:
-                p_new = self.x[j0-self.pose_dim:j0]
+            p_new = self.x[j0-self.pose_dim:j0]
             self.x = np.insert(self.x, j0, p_new, axis=0)
             self.n_poses[other_id] += 1
-
 
         for i in range(0,self.max_iterations):
             A,b = self.build_system()
             if(not self.iterative_update(A,b)):
                 break
+
+        if self.id == 1:
+          print(self.x)
+        #reset update_ids
+        self.update_ids = set()
 
 
     def step(self, step):
