@@ -29,7 +29,7 @@ class RobotMotion(object):
         self.logger.debug("Initialized with position %s", self.pos)
 
 
-    def apply_control_input(self, control_input):
+    def apply_control_input(self, control_input, db):
         """Applies control input to ground truth state.
 
         This is a "physics simulator" for the robot. Given the control input,
@@ -43,10 +43,17 @@ class RobotMotion(object):
         """
 
         # Keep the ground truth perfect.
+
         self.vel = control_input[1:]
-        self.pos += self.vel
-        self.th += control_input[0]
+
+        f = db(self.th,self.pos[0],self.pos[1])
+
+        d_th = control_input[0] + f[0]
+        self.th += d_th
         self.th = (self.th + math.pi) % (2*math.pi) - math.pi
 
+        d_pos = self.vel + f[1:2]
+        self.pos += d_pos
+
         # Odometry output has noise associated with it.
-        return control_input + np.random.normal(0, [0.001, 0.01, .01])
+        return np.array([d_th,d_pos[0],d_pos[1]]) + np.random.normal(0, [0.001, 0.01, .01])

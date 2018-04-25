@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import math
 import numpy as np
 import logging
 import time
@@ -11,6 +12,7 @@ from robot_motion import RobotMotion
 from vis import Visualizer
 from long_range_message import LongRangeMessage
 from sensor_model import SensorModel
+import disturbances as db
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -176,7 +178,6 @@ def do_short_range_message(config, robot1, robot2, motion1, motion2):
         return True
     return False
 
-
 def main():
     logging.basicConfig(level=logging.DEBUG)
     if not args.random:
@@ -200,7 +201,8 @@ def main():
 
             # Ground truth for the robots will be stored elsewhere.
             control_output = robot.get_control_output()
-            odometry = motion.apply_control_input(control_output)
+            # odometry = motion.apply_control_input(control_output, db.radial_waves)
+            odometry = motion.apply_control_input(control_output, db.linear)
             robot.receive_odometry_message(odometry)
 
         for i in range(num_robots):
