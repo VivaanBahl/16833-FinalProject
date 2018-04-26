@@ -133,8 +133,8 @@ def do_long_range_message(config, robot1, robot2, motion1, motion2):
         logging.debug("Robot 2 Measurements: %s", robot2_measurements)
 
         # Stuff the data into the LongRangeMessages
-        message1to2 = LongRangeMessage(message1to2_data, robot1_measurements)
-        message2to1 = LongRangeMessage(message2to1_data, robot2_measurements)
+        message1to2 = LongRangeMessage(message1to2_data, robot2_measurements)
+        message2to1 = LongRangeMessage(message2to1_data, robot1_measurements)
 
         # And then transmit both of the messages.
         # Do it this way to ensure that receiving a message doesn't
@@ -202,7 +202,7 @@ def main():
             # Ground truth for the robots will be stored elsewhere.
             control_output = robot.get_control_output()
             # odometry = motion.apply_control_input(control_output, db.radial_waves)
-            odometry = motion.apply_control_input(control_output, db.linear)
+            odometry = motion.apply_control_input(control_output, db.no_force)
             robot.receive_odometry_message(odometry)
 
         for i in range(num_robots):

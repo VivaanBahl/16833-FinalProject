@@ -52,7 +52,7 @@ class Robot(object):
         self.fake_thetas = True
 
         self.x = np.zeros((self.pose_dim, 1))
-        self.x[:, 0] = (self.th, self.pos[0], self.pos[1])
+        self.x[:, 0] = self.start_pos
 
         # Motion Controller Params, could be moved into config
         self.kp_pos = .1
@@ -380,17 +380,25 @@ class Robot(object):
         """
 
         i = i0
-        A[i0:i0 + self.pose_dim, :self.pose_dim] = self.sigma_init_inv
-        b[i0:i0 + self.pose_dim, 0] = self.start_pos
+        j0 = self.first_pose_ind(self.id)
+        p0 = self.x[j0:j0 + self.pose_dim, 0]
+        A[i0:i0 + self.pose_dim, j0:j0 + self.pose_dim] = self.sigma_init_inv
+        b[i0:i0 + self.pose_dim, 0] = self.start_pos - p0
         i += self.pose_dim
 
         if self.fake_thetas:
+          #If measurements are insufficient to determine other robot
+          #orientations, add a prior setting other robots' initial orientations
+          #to 0
           for id in self.n_poses:
               if id == self.id:
                   continue
               j0 = self.first_pose_ind(id)
               A[i, j0] = 1
+              b[i, 0] = 0 - self.x[j0]
+
               i += 1
+
         return i
 
 
@@ -434,10 +442,14 @@ class Robot(object):
 
         for i, (ind, si, r) in enumerate(measurements[:-1]):
             x, y = self.sensor_pose(ind, si)
-            A[i, :] = (x_n - x, y_n - y)
+            A[i, :] = (2*(x_n - x), 2*(y_n - y))
             b[i] = r**2 - r_n**2 - x**2 + x_n**2 - y**2 + y_n**2
 
-        return np.linalg.lstsq(A, b)[0]
+        pos, res, R, s = np.linalg.lstsq(A, b)
+        if R < 2:
+          return None
+        else:
+          return pos
 
     def compute(self):
         """Perform all the computation required to process messages.
@@ -450,7 +462,7 @@ class Robot(object):
 
         #use previous pose as current pose estimate
         j0 = self.last_pose_ind(self.id)
-        p_new = self.x[j0:j0+self.pose_dim]
+        p_new = self.x[j0:j0+self.pose_dim] + self.odom_measurements[-1]
         self.x = np.insert(self.x, j0+self.pose_dim, p_new, axis=0)
         self.n_poses[self.id] += 1
 
@@ -462,7 +474,7 @@ class Robot(object):
                 done_triangulating.append(other_id)
                 #Use pos as initial state estimate (set th = 0)
                 j0 = self.first_pose_ind(other_id)
-                p_new = np.vstack((pos, [0]))
+                p_new = np.vstack(([0], pos))
                 self.x = np.insert(self.x, j0, p_new, axis=0)
                 self.n_poses[other_id] = 1
 
