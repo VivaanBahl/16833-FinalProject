@@ -12,13 +12,13 @@ sigma_odom: [
     [0.0, 0.0, 0.01]
 ]
 sigma_range: [
-    [0.00001]
+    [0.1]
 ]
 robot_parameters:
-    - start: [  0,  5, 1]
-      goal:  [ 10,  1]
+    - start: [  0,  10, 1]
+      goal:  [ 10,  5]
     - start: [  0,  0, 0]
-      goal:  [ 1, 10]
+      goal:  [ 5, 0]
 sensor_parameters:
     - delta: [0,  1]
       orientation: 0

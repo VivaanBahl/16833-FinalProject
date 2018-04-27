@@ -22,6 +22,7 @@ class RobotMotion(object):
                 config['start'],
                 config['sigma_initial']
         )
+        #x0 = np.array(config['start'])
         self.pos = x0[1:]
         self.th = (x0[0] + math.pi) % (2*math.pi) - math.pi
         self.vel = np.zeros(len(self.pos))

@@ -31,7 +31,7 @@ class Robot(object):
         self.sigma_init_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_init))
         sigma_odom = config['sigma_odom']
         self.sigma_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_odom))
-        self.sigma_other_odom_inv = self.sigma_odom_inv
+        self.sigma_other_odom_inv = self.sigma_odom_inv / 100
         sigma_range = config['sigma_range']
         self.sigma_range_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_range))
         self.sensor_deltas = [np.array(s['delta']) for s in config['sensor_parameters']]
@@ -175,7 +175,7 @@ class Robot(object):
               self.initial_ranges[other_id] = []
             for si, r in enumerate(message.measurements):
               self.initial_ranges[other_id].append((ind, si, r))
-        elif False:
+        else:
             self.update_ids.add(other_id)
             other_ind = self.n_poses[other_id]
             for si, r in enumerate(message.measurements):
@@ -350,7 +350,7 @@ class Robot(object):
             j_start = self.first_pose_ind(id)
             for ind in range(self.n_poses[id] - 1):
                 j0 = j_start + self.pose_dim * ind
-                j1 = j_start + self.pose_dim * ind + 1
+                j1 = j_start + self.pose_dim * (ind + 1)
                 p0 = self.x[j0:j0 + self.pose_dim]
                 p1 = self.x[j1:j1 + self.pose_dim]
                 H = np.array([[-1, 0, 0, 1, 0, 0],
@@ -414,13 +414,13 @@ class Robot(object):
         A = scipy.sparse.lil_matrix((M, N))
         b = np.zeros((M, 1))
 
-        #Prior
-
         i = 0
         i = self.build_priors(A, b, i)
         i = self.build_odom_system(A, b, i)
         i = self.build_other_odom_system(A, b, i)
         i = self.build_range_system(A, b, i)
+#        if self.id == 1:
+#          print(A.toarray())
 
         return A, b
 
