@@ -11,3 +11,8 @@ class LongRangeMessage(object):
         """
         self.data = data
         self.measurements = measurements
+
+
+    def __str__(self):
+        """Human readable string representation of message"""
+        return "Long Range Message: %s, %s" % (self.data, self.measurements)

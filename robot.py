@@ -118,7 +118,7 @@ class Robot(object):
             hasn't been seen yet
         """
         if not id in self.n_poses:
-          return (None, None)
+            return (None, None)
         j0 = self.last_pose_ind(id)
         if self.n_poses[id] == 0:
             return np.array([None, None])
@@ -138,7 +138,7 @@ class Robot(object):
             seen yet
         """
         if not id in self.n_poses:
-          return None
+            return None
         j0 = self.last_pose_ind(id)
         return self.x[j0]
 
@@ -180,10 +180,10 @@ class Robot(object):
             #don't have an initial estimate yet, so buffer measurements until we
             #can successfully triangulate
             if not other_id in self.initial_ranges.keys():
-              self.initial_ranges[other_id] = []
+                self.initial_ranges[other_id] = []
             for si, r in enumerate(message.measurements):
-              self.initial_ranges[other_id].append((ind, si, r))
-        else:
+                self.initial_ranges[other_id].append((ind, si, r))
+        elif False:
             self.update_ids.add(other_id)
             other_ind = self.n_poses[other_id]
             for si, r in enumerate(message.measurements):
