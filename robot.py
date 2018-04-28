@@ -24,6 +24,8 @@ class Robot(object):
         np.set_printoptions(precision=3, linewidth=os.get_terminal_size().columns)
 
         self.logger.info("Initializing with config %s", config)
+
+        #initialize settings from config
         self.config = config
         self.id = config['id']
         self.goal = config['goal']
@@ -31,20 +33,30 @@ class Robot(object):
         self.sigma_init_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_init))
         sigma_odom = config['sigma_odom']
         self.sigma_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_odom))
-        self.sigma_other_odom_inv = self.sigma_odom_inv / 100
+        sigma_other_odom = config['sigma_fake_odom']
+        self.sigma_other_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_other_odom))
         sigma_range = config['sigma_range']
         self.sigma_range_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_range))
         self.sensor_deltas = [np.array(s['delta']) for s in config['sensor_parameters']]
-
+        self.use_range = config['use_range']
         self.start_pos = config['start']
+
+        # Motion Controller Params
+        self.kp_pos = .1
+        self.v_lin_max = 1
+
+        # SLAM Solver Params
+        self.max_iterations = 50
+        self.stopping_threshold = 1e-6
+
         self.odom_measurements = []
         self.range_measurements = []
-
         #buffer of range measurements received before successfully triangulating
         #an initial pose
         self.initial_ranges = dict()
         #robots we've received new measurements of
         self.update_ids = set()
+
         self.n_poses = {self.id : 1}
         self.pose_dim = 3
         self.odom_dim = 3
@@ -53,17 +65,7 @@ class Robot(object):
 
         self.x = np.zeros((self.pose_dim, 1))
         self.x[:, 0] = self.start_pos
-
-        # Motion Controller Params, could be moved into config
-        self.kp_pos = .1
-        self.kp_th = 1
-        self.v_lin_max = 1
-        self.v_th_max = math.pi / 128
-
         self.t = 0
-
-        self.max_iterations = 50
-        self.stopping_threshold = 1e-6
 
 
     def first_pose_ind(self, robot_id):
@@ -157,6 +159,9 @@ class Robot(object):
                 another robot.
         """
         self.logger.debug("Received short range message %s", message)
+        #ignore message if in odom-only mode
+        if not self.use_range:
+          return
 
 
     def receive_long_range_message(self, message):
@@ -166,6 +171,9 @@ class Robot(object):
         away from other robots but still within long range sensor range.
         """
         self.logger.debug("Received long range message %s", message)
+        #ignore message if in odom-only mode
+        if not self.use_range:
+          return
         other_id = message.data['id']
         ind = self.n_poses[self.id]
         if not other_id in self.n_poses:

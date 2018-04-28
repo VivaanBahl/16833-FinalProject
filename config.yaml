@@ -1,24 +1,43 @@
 short_thresh: 2
 long_thresh: 50
 num_robots: 2
-sigma_initial: [
-    [0.001, 0.0, 0.0],
-    [0.0, 0.1, 0.0],
-    [0.0, 0.0, 0.1],
-]
-sigma_odom: [
-    [0.001, 0.0, 0.0],
-    [0.0, 0.01, 0.0],
-    [0.0, 0.0, 0.01]
-]
-sigma_range: [
-    [0.1]
-]
 robot_parameters:
     - start: [  0,  10, 1]
       goal:  [ 10,  5]
     - start: [  0,  0, 0]
       goal:  [ 5, 0]
+slam_parameters:
+    use_range: true
+    sigma_initial: [
+        [0.001, 0.0, 0.0],
+        [0.0, 0.1, 0.0],
+        [0.0, 0.0, 0.1],
+    ]
+    sigma_odom: [
+        [0.0001, 0.0, 0.0],
+        [0.0, 0.001, 0.0],
+        [0.0, 0.0, 0.001]
+    ]
+    sigma_fake_odom: [
+        [1, 0.0, 0.0],
+        [0.0, 10, 0.0],
+        [0.0, 0.0, 10]
+    ]
+    sigma_range: [
+        [0.1]
+    ]
+motion_parameters:
+    disturbance: radial_waves
+    sigma_initial: [
+        [0.001, 0.0, 0.0],
+        [0.0, 0.1, 0.0],
+        [0.0, 0.0, 0.1],
+    ]
+    sigma_odom: [
+        [0.0001, 0.0, 0.0],
+        [0.0, 0.001, 0.0],
+        [0.0, 0.0, 0.001]
+    ]
 sensor_parameters:
     - delta: [0,  1]
       orientation: 0

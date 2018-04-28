@@ -1,7 +1,7 @@
 import math
 import logging
 import numpy as np
-
+import disturbances as db
 
 class RobotMotion(object):
     """A Ground Truth System for a Robot.
@@ -17,12 +17,17 @@ class RobotMotion(object):
         sampled from the initial sigma specified in the configuration.
         """
         self.logger = logging.getLogger("Robot Motion %d" % config['id'])
-
         x0 = np.random.multivariate_normal(
                 config['start'],
                 config['sigma_initial']
         )
-        #x0 = np.array(config['start'])
+        self.sigma = config['sigma_odom']
+        if config['disturbance'] == 'radial_waves':
+          self.disturbance = db.radial_waves
+        if config['disturbance'] == 'linear':
+          self.disturbance = db.linear
+        else:
+          self.disturbance = db.no_force
         self.pos = x0[1:]
         self.th = (x0[0] + math.pi) % (2*math.pi) - math.pi
         self.vel = np.zeros(len(self.pos))
@@ -30,7 +35,7 @@ class RobotMotion(object):
         self.logger.debug("Initialized with position %s", self.pos)
 
 
-    def apply_control_input(self, control_input, db):
+    def apply_control_input(self, control_input):
         """Applies control input to ground truth state.
 
         This is a "physics simulator" for the robot. Given the control input,
@@ -47,7 +52,7 @@ class RobotMotion(object):
 
         self.vel = control_input[1:]
 
-        f = db(self.th,self.pos[0],self.pos[1])
+        f = self.disturbance(self.th,self.pos[0],self.pos[1])
 
         d_th = control_input[0] + f[0]
         self.th += d_th
@@ -57,4 +62,4 @@ class RobotMotion(object):
         self.pos += d_pos
 
         # Odometry output has noise associated with it.
-        return np.array([d_th,d_pos[0],d_pos[1]]) + np.random.normal(0, [0.001, 0.01, .01])
+        return np.random.multivariate_normal([d_th, d_pos[0], d_pos[1]], self.sigma)
