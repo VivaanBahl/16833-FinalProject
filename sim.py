@@ -242,7 +242,11 @@ def main():
             robot.step(1)
 
         # Sleep for some amount of time.
-        time.sleep(args.delay)
+        if (args.delay > 0):
+            time.sleep(args.delay)
+        elif (args.delay < 0):
+            input()
+
 
 if __name__ == "__main__":
     main()

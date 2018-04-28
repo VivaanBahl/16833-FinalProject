@@ -21,7 +21,8 @@ class Robot(object):
             config: Configuration file.
         """
         self.logger = logging.getLogger("Robot %d" % config['id'])
-        np.set_printoptions(precision=3, linewidth=os.get_terminal_size().columns)
+        np.set_printoptions(precision=3, 
+                linewidth=os.get_terminal_size().columns)
 
         self.logger.info("Initializing with config %s", config)
 
@@ -37,7 +38,8 @@ class Robot(object):
         self.sigma_other_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_other_odom))
         sigma_range = config['sigma_range']
         self.sigma_range_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_range))
-        self.sensor_deltas = [np.array(s['delta']) for s in config['sensor_parameters']]
+        self.sensor_deltas = [np.array(s['delta']) 
+                              for s in config['sensor_parameters']]
         self.use_range = config['use_range']
         self.start_pos = config['start']
 
@@ -51,6 +53,8 @@ class Robot(object):
 
         self.odom_measurements = []
         self.range_measurements = []
+        self.goals = dict() # Storing goal information for other robot IDs
+
         #buffer of range measurements received before successfully triangulating
         #an initial pose
         self.initial_ranges = dict()
@@ -176,6 +180,12 @@ class Robot(object):
           return
         other_id = message.data['id']
         ind = self.n_poses[self.id]
+
+        # Store the goal information received in the message, overriding
+        # previous goal information (if any). This assumes all frames are
+        # aligned, which they are.
+        self.goals[other_id] = message.data['goal']
+
         if not other_id in self.n_poses:
             #don't have an initial estimate yet, so buffer measurements until we
             #can successfully triangulate
@@ -185,6 +195,8 @@ class Robot(object):
                 self.initial_ranges[other_id].append((ind, si, r))
         elif False:
             self.update_ids.add(other_id)
+            return # TODO: REMOVE ME
+
             other_ind = self.n_poses[other_id]
             for si, r in enumerate(message.measurements):
                 #measurements stored as (self_pose_index, other_id,
@@ -233,10 +245,35 @@ class Robot(object):
             Object to be transmitted to other robots in long range.
         """
 
-        message = {"id": self.config['id']}
-        message["data"] = [42]
+        message = {
+            "id": self.config['id'],
+            "goal": self.goal,
+        }
         self.logger.debug("Returning long range message %s", message)
         return message
+
+
+    def pid_controller(self, current, setpoint):
+        """Get control output given current state and setpoint.
+
+        This is pulled out of the get_control_output function so that it can be
+        used to propagate other robot poses forward as well. This function
+        currently only implements a P controller. Control output is currently
+        given as [0, dx, dy], which means that orientation is never updated.
+
+        Args:
+            current: NumPy array of current [x, y] position
+            setpoint: Goal state in [x, y]
+
+        Returns:
+            Control output from PID controller.
+        """
+
+        error = setpoint - current # Compute error relative to goal
+        scale = self.v_lin_max / np.abs(error).max() # Determine scale factor P
+        v_lin = error if scale > 1 else error * scale # Apply P controller
+        control_output = np.hstack(([0], v_lin)) # Format nicely
+        return control_output
 
 
     def get_control_output(self):
@@ -251,13 +288,7 @@ class Robot(object):
             Control output to feed into the robot model.
         """
 
-        #compute position and orientation errors relative to goal
-        d_pos = self.goal - self.pos
-
-        #Use proportional controllers on linear and angular velocity
-        scale = self.v_lin_max / np.abs(d_pos).max()
-        v_lin = d_pos if scale > 1 else d_pos * scale
-        self.control_output = np.hstack(([0], v_lin))
+        self.control_output = self.pid_controller(self.pos, self.goal)
         self.logger.debug("Returning control output %s", self.control_output)
         return self.control_output
 
@@ -476,6 +507,9 @@ class Robot(object):
 
         #Try to estimate the initial position of newly visible robots
         done_triangulating = []
+       
+        # First time you see each robot (with enough measurements), do some
+        # triangulation.
         for other_id in self.initial_ranges.keys():
             pos = self.triangulate(self.initial_ranges[other_id])
             if pos is not None: #Triangulation was successful
@@ -489,28 +523,45 @@ class Robot(object):
                 #Use the most recent measurement for SLAM
                 #TODO: Should probably incorporate all measurements for SLAM
                 ind = self.n_poses[self.id] - 1
-                measurements = [(i, r) for _ind, i, r in self.initial_ranges[other_id] if _ind == ind]
+                measurements = [(i, r) for _ind, i, r in 
+                                self.initial_ranges[other_id] if _ind == ind]
                 for i, r in measurements:
                     #measurements stored as (self_pose_index, other_id,
                     #                        other_pose_index, sensor_index,
                     #                        range)
                     meas = (ind, other_id, 0, i, r)
                     self.range_measurements.append(meas)
+
+        # Coupled with the above, delete robot IDs which have been triangulated. 
         for other_id in done_triangulating:
             del self.initial_ranges[other_id]
-
+    
+        # For all other robots (which have already been localized), update their
+        # poses, at exactly the same place (for now).
         for other_id in self.update_ids:
             j0 = self.last_pose_ind(other_id)
-            p_new = self.x[j0:j0+self.pose_dim]
-            self.x = np.insert(self.x, j0 + self.pose_dim, p_new, axis=0)
+            previous_pose = self.x[j0:j0+self.pose_dim]
+
+            # To compute the update, take the previous position and current goal
+            # information and pass them through the PID controller. Treat that
+            # output as the path that we think the robot must have taken.
+            previous_pos = previous_pose[1:].reshape(-1)
+            control = self.pid_controller(previous_pos, self.goals[other_id])
+            self.logger.warning("Control: %s", control)
+            
+            current_pose = previous_pose + control.reshape(-1, 1)
+            #  print(current_pose)
+
+            self.x = np.insert(self.x, j0 + self.pose_dim, current_pose, axis=0)
             self.n_poses[other_id] += 1
 
+        # Build the system to solve.
         for i in range(0,self.max_iterations):
             A,b = self.build_system()
             if(not self.iterative_update(A,b)):
                 break
 
-        #reset update_ids
+        # Reset update_ids.
         self.update_ids = set()
 
 
