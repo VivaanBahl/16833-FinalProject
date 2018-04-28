@@ -300,9 +300,9 @@ class Robot(object):
         dx = A_splu.solve(A.T.dot(b))
         self.x = prev_x + dx
 
-        #  print("WATCH ME:")
-        #  print(self.x.T)
-        #  print(prev_x.T)
+        print("WATCH ME:")
+        print(self.x.T.max())
+        print(prev_x.T.max())
         if(euclidean(self.x,prev_x) < self.stopping_threshold):
             return False
         return True
@@ -552,9 +552,8 @@ class Robot(object):
             control = self.pid_controller(previous_pos, self.goals[other_id])
             self.logger.warning("Control: %s", control)
             
-            current_pose = previous_pose + control.reshape(-1, 1)
-            #  current_pose = previous_pose
-            #  print(current_pose)
+            #  current_pose = previous_pose + control.reshape(-1, 1) # PID update
+            current_pose = previous_pose # No update
 
             self.x = np.insert(self.x, j0 + self.pose_dim, current_pose, axis=0)
             self.n_poses[other_id] += 1
