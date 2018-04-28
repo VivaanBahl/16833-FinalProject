@@ -195,7 +195,7 @@ class Robot(object):
                 self.initial_ranges[other_id].append((ind, si, r))
         elif False:
             self.update_ids.add(other_id)
-            return # TODO: REMOVE ME
+            #  return # TODO: REMOVE ME
 
             other_ind = self.n_poses[other_id]
             for si, r in enumerate(message.measurements):
@@ -300,7 +300,10 @@ class Robot(object):
         dx = A_splu.solve(A.T.dot(b))
         self.x = prev_x + dx
 
-        if(euclidean(self.x.T,prev_x) < self.stopping_threshold):
+        #  print("WATCH ME:")
+        #  print(self.x.T)
+        #  print(prev_x.T)
+        if(euclidean(self.x,prev_x) < self.stopping_threshold):
             return False
         return True
 
@@ -550,6 +553,7 @@ class Robot(object):
             self.logger.warning("Control: %s", control)
             
             current_pose = previous_pose + control.reshape(-1, 1)
+            #  current_pose = previous_pose
             #  print(current_pose)
 
             self.x = np.insert(self.x, j0 + self.pose_dim, current_pose, axis=0)
