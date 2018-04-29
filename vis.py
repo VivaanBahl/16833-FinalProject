@@ -2,25 +2,32 @@ import matplotlib.pyplot as plt
 import numpy as np
 import logging
 import disturbances as db
+import pdb
 
 
 class Visualizer(object):
-    def __init__(self):
+    def __init__(self, num_robots):
         """Initialize visualizer with program data.
 
         Args:
-            robots: List of Robot objects.
-            motions: List of RobotMotion objects.
+            num_robots - number of robots in the system
         """
         self.logger = logging.getLogger(__name__)
         self.logger.info("Starting visualization.")
 
         # Note that these are aliased to the real ones. Don't modify, just read.
-        self.figure_number = 1
+        self.main_figure_number = 1
+        self.error_figure_number = 2
 
-        fig = plt.figure(self.figure_number)
+        self.robot_errors = []
+        for i in range(num_robots):
+            self.robot_errors.append([])
+
+        fig = plt.figure(self.main_figure_number)
         plt.ion()
         plt.show()
+        fig2 = plt.figure(self.error_figure_number)
+        plt.ion()
 
 
     def draw_messages(self, ax, motions, measurement_arr, color):
@@ -35,6 +42,13 @@ class Visualizer(object):
 
             ax.arrow(arrow_origin[0], arrow_origin[1], arrow_size[0], arrow_size[1], ec=color)
 
+    def get_euclidean_error(self, robot_gt, robot_belief):
+        """
+        Calculates the Euclidean distance betweeen a robot's ground truth and it's current pose
+        Both robot_gt and robot_belief are passed in as column numpy arrays
+        """
+        return np.sqrt(np.sum(np.square(robot_gt - robot_belief)))
+
 
     def update(self, robots, motions, short_range_measurements, long_range_measurements):
         """Perform visualization updates here."""
@@ -42,14 +56,12 @@ class Visualizer(object):
         self.logger.debug("Updating visualization.")
 
         # get the main update figure, clear it out for our update
-        fig = plt.figure(self.figure_number)
+        fig = plt.figure(self.main_figure_number)
         fig.clf()
 
         # TODO convert to numpy arrays for scalability
         x_robot_gt = []
         y_robot_gt = []
-        x_robot_pre = []
-        y_robot_pre = []
         x_goal = []
         y_goal = []
         headings = []
@@ -81,12 +93,10 @@ class Visualizer(object):
                     robot_beliefs[i, other_robot_id, 0] = other_bel_x
                     robot_beliefs[i, other_robot_id, 1] = other_bel_y
 
+            self.robot_errors[i].append(self.get_euclidean_error(pos, robot_beliefs[i, i, :]))
+
             vel = motion.vel
             headings.append((vel[0], vel[1]))
-
-            belief = robot.pos
-            x_robot_pre.append(belief[0])
-            y_robot_pre.append(belief[1])
 
             # if a target is outside of the viewport, set viewport to include it
             if pos[0] < x_min_coord or goal[0] < x_min_coord:
@@ -109,7 +119,6 @@ class Visualizer(object):
         plt.scatter(x_robot_gt, y_robot_gt, c='k', marker='o')
 
         # draw the robot belief as their own individual colors
-        # plt.scatter(x_robot_pre, y_robot_pre, c='b', marker='o')
         for i in range(0, len(robots)):
             robot_i_beliefs_x = robot_beliefs[i, :, 0]
             robot_i_beliefs_y = robot_beliefs[i, :, 1]
@@ -139,6 +148,14 @@ class Visualizer(object):
         y_margin = y_scale / 12
         plt.xlim([x_min_coord - x_margin, x_max_coord + x_margin])
         plt.ylim([y_min_coord - y_margin, y_max_coord + y_margin])
+
+        # draw the error graphs
+        error_fig = plt.figure(self.error_figure_number)
+        error_fig.clf()
+        num_subplots = len(robots)
+        for i in range(1, num_subplots + 1):
+            plt.subplot(num_subplots, 1, i)
+            plt.plot(self.robot_errors[i-1])
 
         plt.pause(0.05)
         plt.show()
