@@ -62,10 +62,10 @@ def initialize_robots_and_motions(config):
     for i in range(num_robots):
         robot_config = config['robot_parameters'][i % num_parameters].copy()
         robot_config['id'] = i
-        robot_config['sigma_initial'] = config['sigma_initial']
-        robot_config['sigma_odom'] = config['sigma_odom']
-        robot_config['sigma_range'] = config['sigma_range']
         robot_config['sensor_parameters'] = config['sensor_parameters']
+        motion_config = robot_config.copy()
+        robot_config.update(config['slam_parameters'])
+        motion_config.update(config['motion_parameters'])
 
         # Make everything a numpy array.
         for key in robot_config:
@@ -77,8 +77,19 @@ def initialize_robots_and_motions(config):
                     # But if not, leave it as the mixed types array it is.
                     pass
 
+        # Make everything a numpy array.
+        for key in motion_config:
+            if type(motion_config[key]) == list:
+                try:
+                    # We might be able to make it a numpy array.
+                    motion_config[key] = np.array(motion_config[key], dtype=float)
+                except:
+                    # But if not, leave it as the mixed types array it is.
+                    pass
+
+
         robots.append(Robot(robot_config))
-        motions.append(RobotMotion(robot_config))
+        motions.append(RobotMotion(motion_config))
 
     return robots, motions
 
@@ -186,8 +197,6 @@ def main():
     with open(args.robot_config) as f:
         config = yaml.load(f.read())
 
-    #  robots = initialize_robots(config)
-    #  motions = initialize_robot_motions(config)
     robots, motions = initialize_robots_and_motions(config)
     num_robots = len(robots)
     vis = Visualizer(num_robots)
@@ -201,8 +210,7 @@ def main():
 
             # Ground truth for the robots will be stored elsewhere.
             control_output = robot.get_control_output()
-            # odometry = motion.apply_control_input(control_output, db.radial_waves)
-            odometry = motion.apply_control_input(control_output, db.no_force)
+            odometry = motion.apply_control_input(control_output)
             robot.receive_odometry_message(odometry)
 
         for i in range(num_robots):
@@ -234,7 +242,11 @@ def main():
             robot.step(1)
 
         # Sleep for some amount of time.
-        time.sleep(args.delay)
+        if (args.delay > 0):
+            time.sleep(args.delay)
+        elif (args.delay < 0):
+            input()
+
 
 if __name__ == "__main__":
     main()
