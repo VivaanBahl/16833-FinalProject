@@ -22,6 +22,7 @@ class RobotMotion(object):
                 config['sigma_initial']
         )
         self.sigma = config['sigma_odom']
+        self.sigma_control = config['sigma_control']
         if config['disturbance'] == 'radial_waves':
           self.disturbance = db.radial_waves
         if config['disturbance'] == 'linear':
@@ -50,11 +51,13 @@ class RobotMotion(object):
 
         # Keep the ground truth perfect.
 
-        self.vel = control_input[1:]
+        noisy_control = np.random.multivariate_normal(control_input, self.sigma_control)
+
+        self.vel = noisy_control[1:]
 
         f = self.disturbance(self.th,self.pos[0],self.pos[1])
 
-        d_th = control_input[0] + f[0]
+        d_th = noisy_control[0] + f[0]
         self.th += d_th
         self.th = (self.th + math.pi) % (2*math.pi) - math.pi
 
