@@ -21,7 +21,7 @@ class Robot(object):
             config: Configuration file.
         """
         self.logger = logging.getLogger("Robot %d" % config['id'])
-        np.set_printoptions(precision=3, 
+        np.set_printoptions(precision=3,
                 linewidth=os.get_terminal_size().columns)
 
         self.logger.info("Initializing with config %s", config)
@@ -38,7 +38,7 @@ class Robot(object):
         self.sigma_other_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_other_odom))
         sigma_range = config['sigma_range']
         self.sigma_range_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_range))
-        self.sensor_deltas = [np.array(s['delta']) 
+        self.sensor_deltas = [np.array(s['delta'])
                               for s in config['sensor_parameters']]
         self.use_range = config['use_range']
         self.start_pos = config['start']
@@ -52,6 +52,7 @@ class Robot(object):
         self.stopping_threshold = 1e-6
 
         self.odom_measurements = []
+        self.other_control = {}
         self.range_measurements = []
         self.goals = dict() # Storing goal information for other robot IDs
 
@@ -176,8 +177,6 @@ class Robot(object):
         """
         self.logger.debug("Received long range message %s", message)
         #ignore message if in odom-only mode
-        if not self.use_range:
-          return
         other_id = message.data['id']
         ind = self.n_poses[self.id]
 
@@ -193,10 +192,11 @@ class Robot(object):
                 self.initial_ranges[other_id] = []
             for si, r in enumerate(message.measurements):
                 self.initial_ranges[other_id].append((ind, si, r))
-        elif False:
+        # elif False:
+        else:
             self.update_ids.add(other_id)
-            #  return # TODO: REMOVE ME
-
+            if not self.use_range:
+              return
             other_ind = self.n_poses[other_id]
             for si, r in enumerate(message.measurements):
                 #measurements stored as (self_pose_index, other_id,
@@ -300,9 +300,7 @@ class Robot(object):
         dx = A_splu.solve(A.T.dot(b))
         self.x = prev_x + dx
 
-        print("WATCH ME:")
-        print(self.x.T.max())
-        print(prev_x.T.max())
+        self.logger.error("WATCH ME: %f, %f", self.x.T.max(), prev_x.T.max())
         if(euclidean(self.x,prev_x) < self.stopping_threshold):
             return False
         return True
@@ -403,7 +401,8 @@ class Robot(object):
                 A[i:i + self.odom_dim, j1:j1 + self.pose_dim] = H[:, self.pose_dim:]
                 mPred = p1 - p0
                 mPred[0] = self.wrap_to_pi(mPred[0])
-                dz = -mPred
+                control = self.other_control[id][ind].reshape((-1, 1))
+                dz = control-mPred
                 dz[0] = self.wrap_to_pi(dz[0])
                 b[i:i + self.odom_dim, 0] = dz.flatten()
                 i += self.odom_dim
@@ -463,6 +462,7 @@ class Robot(object):
         i = self.build_range_system(A, b, i)
 #        if self.id == 1:
 #          print(A.toarray())
+        print("b values", b.min(), b.max())
 
         return A, b
 
@@ -510,7 +510,7 @@ class Robot(object):
 
         #Try to estimate the initial position of newly visible robots
         done_triangulating = []
-       
+
         # First time you see each robot (with enough measurements), do some
         # triangulation.
         for other_id in self.initial_ranges.keys():
@@ -526,7 +526,7 @@ class Robot(object):
                 #Use the most recent measurement for SLAM
                 #TODO: Should probably incorporate all measurements for SLAM
                 ind = self.n_poses[self.id] - 1
-                measurements = [(i, r) for _ind, i, r in 
+                measurements = [(i, r) for _ind, i, r in
                                 self.initial_ranges[other_id] if _ind == ind]
                 for i, r in measurements:
                     #measurements stored as (self_pose_index, other_id,
@@ -535,10 +535,10 @@ class Robot(object):
                     meas = (ind, other_id, 0, i, r)
                     self.range_measurements.append(meas)
 
-        # Coupled with the above, delete robot IDs which have been triangulated. 
+        # Coupled with the above, delete robot IDs which have been triangulated.
         for other_id in done_triangulating:
             del self.initial_ranges[other_id]
-    
+
         # For all other robots (which have already been localized), update their
         # poses, at exactly the same place (for now).
         for other_id in self.update_ids:
@@ -550,10 +550,19 @@ class Robot(object):
             # output as the path that we think the robot must have taken.
             previous_pos = previous_pose[1:].reshape(-1)
             control = self.pid_controller(previous_pos, self.goals[other_id])
+            #control = np.zeros((3, 1))
+            #control = np.array([[0, 1, 0]]).T
+#            if self.t > 30:
+#                control = np.array([[0, 1, 0]]).T
+#            else:
+#                control = np.zeros((3, 1))
+            if not other_id in self.other_control:
+                self.other_control[other_id] = []
+            self.other_control[other_id].append(control)
             self.logger.warning("Control: %s", control)
-            
-            #  current_pose = previous_pose + control.reshape(-1, 1) # PID update
-            current_pose = previous_pose # No update
+
+            current_pose = previous_pose + control.reshape(-1, 1) # PID update
+            #current_pose = previous_pose # No update
 
             self.x = np.insert(self.x, j0 + self.pose_dim, current_pose, axis=0)
             self.n_poses[other_id] += 1
