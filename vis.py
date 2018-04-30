@@ -83,7 +83,7 @@ class Visualizer(object):
             y_robot_gt.append(pos[1])
 
             robot = robots[i]
-            goal = robot.goal
+            goal = robot.get_current_goal()
             x_goal.append(goal[0])
             y_goal.append(goal[1])
 

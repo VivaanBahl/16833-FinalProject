@@ -29,15 +29,24 @@ class Robot(object):
         #initialize settings from config
         self.config = config
         self.id = config['id']
-        self.goal = config['goal']
+
+        # Goals initialization
+        self.my_goals = config['goals']
+        self.goal_index = 0
+        self.goal_thresh = config['goal_parameters']['threshold']
+        self.loiter_time = config['goal_parameters']['loiter_time']
+        self.at_goal_time = 0
+
+        # Covariances initialization
         sigma_init = config['sigma_initial']
-        self.sigma_init_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_init))
         sigma_odom = config['sigma_odom']
-        self.sigma_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_odom))
         sigma_other_odom = config['sigma_fake_odom']
-        self.sigma_other_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_other_odom))
         sigma_range = config['sigma_range']
+        self.sigma_init_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_init))
+        self.sigma_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_odom))
+        self.sigma_other_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_other_odom))
         self.sigma_range_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_range))
+
         self.sensor_deltas = [np.array(s['delta'])
                               for s in config['sensor_parameters']]
         self.use_range = config['use_range']
@@ -234,6 +243,35 @@ class Robot(object):
         return message
 
 
+    def get_current_goal(self):
+        """Get the current goal from the input list of goals.
+
+        The robot configuration includes a list of goals. This function will
+        return the proper current goal.
+        """
+        return self.my_goals[self.goal_index]
+
+
+    def update_goal(self):
+        """Update the current goal, if necessary.
+
+        Uses the current position estimate to determine if we're close enough to
+        the current goal. If we've stuck around the current goal long enough,
+        update to the next goal.
+        """
+
+        reached = self.get_current_goal() - self.pos
+        if np.linalg.norm(reached) <= self.goal_thresh:
+            self.at_goal_time += 1
+        else:
+            self.at_goal_time = 0
+
+        if self.at_goal_time >= self.loiter_time:
+            self.logger.info("Switching to the next goal!")
+            self.goal_index += 1
+            self.goal_index = min(self.goal_index, len(self.my_goals) - 1)
+
+
     def get_long_range_message(self):
         """Get long range message to transmit to another robot.
 
@@ -247,7 +285,7 @@ class Robot(object):
 
         message = {
             "id": self.config['id'],
-            "goal": self.goal,
+            "goal": self.get_current_goal(),
         }
         self.logger.debug("Returning long range message %s", message)
         return message
@@ -288,7 +326,8 @@ class Robot(object):
             Control output to feed into the robot model.
         """
 
-        self.control_output = self.pid_controller(self.pos, self.goal)
+        self.control_output = self.pid_controller(self.pos,
+                self.get_current_goal())
         self.logger.debug("Returning control output %s", self.control_output)
         return self.control_output
 
@@ -300,7 +339,7 @@ class Robot(object):
         dx = A_splu.solve(A.T.dot(b))
         self.x = prev_x + dx
 
-        self.logger.error("WATCH ME: %f, %f", self.x.T.max(), prev_x.T.max())
+        #  self.logger.error("WATCH ME: %f, %f", self.x.T.max(), prev_x.T.max())
         if(euclidean(self.x,prev_x) < self.stopping_threshold):
             return False
         return True
@@ -462,7 +501,7 @@ class Robot(object):
         i = self.build_range_system(A, b, i)
 #        if self.id == 1:
 #          print(A.toarray())
-        print("b values", b.min(), b.max())
+        #  print("b values", b.min(), b.max())
 
         return A, b
 
@@ -575,6 +614,9 @@ class Robot(object):
 
         # Reset update_ids.
         self.update_ids = set()
+
+        # Update the goals, if necessary.
+        self.update_goal()
 
 
     def step(self, step):

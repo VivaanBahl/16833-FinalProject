@@ -63,6 +63,7 @@ def initialize_robots_and_motions(config):
         robot_config = config['robot_parameters'][i % num_parameters].copy()
         robot_config['id'] = i
         robot_config['sensor_parameters'] = config['sensor_parameters']
+        robot_config['goal_parameters'] = config['goal_parameters']
         motion_config = robot_config.copy()
         robot_config.update(config['slam_parameters'])
         motion_config.update(config['motion_parameters'])
@@ -221,8 +222,10 @@ def main():
                 motion2 = motions[j]
 
                 # Potentially exchange long / short messages, and log their results
-                did_short_range_comm = do_long_range_message(config, robot1, robot2, motion1, motion2)
-                did_long_range_comm = do_short_range_message(config, robot1, robot2, motion1, motion2)
+                did_short_range_comm = do_long_range_message(
+                        config, robot1, robot2, motion1, motion2)
+                did_long_range_comm = do_short_range_message(
+                        config, robot1, robot2, motion1, motion2)
 
                 # if we exchanged the messages, add the indices of the pair to the visualizer
                 if did_short_range_comm:
