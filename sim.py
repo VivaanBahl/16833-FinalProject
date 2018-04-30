@@ -12,7 +12,6 @@ from robot_motion import RobotMotion
 from vis import Visualizer
 from long_range_message import LongRangeMessage
 from sensor_model import SensorModel
-import disturbances as db
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
