@@ -4,7 +4,7 @@ def no_force(th,x,y):
 	return [0,0,0]
 
 def radial_waves(th,x,y):
-    fth = (np.pi/36) #swirl counter-clockwise
+    fth = (np.pi/36)*th #swirl counter-clockwise
     fx = np.sin(x)*np.cos(np.power(x,2) + np.power(y,2))
     fy = np.sin(y)*np.cos(np.power(x,2) + np.power(y,2))
     return np.array([fth,fx,fy])

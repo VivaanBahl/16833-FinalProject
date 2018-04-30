@@ -1,8 +1,13 @@
-import matplotlib.pyplot as plt
-import numpy as np
+import atexit
 import logging
-import disturbances as db
 import pdb
+import time
+
+import disturbances as db
+import matplotlib.pyplot as plt
+import matplotlib.figure as fig
+import matplotlib.animation as manimation
+import numpy as np
 
 class Visualizer(object):
     def __init__(self, num_robots, disturbance):
@@ -13,32 +18,53 @@ class Visualizer(object):
         """
         self.logger = logging.getLogger(__name__)
         self.logger.info("Starting visualization.")
-
+        
         # Note that these are aliased to the real ones. Don't modify, just read.
         self.main_figure_number = 1
         self.error_figure_number = 2
 
+        # Start the stuff for the movie writer.
+        metadata = dict(title='MAS SLAM Simulation', artist='Awesome Squad')
+        self.writer = manimation.writers['ffmpeg'](fps=10, metadata=metadata)
+        name = "MAS" + "_" + str(int(round(time.time()))) + ".mp4"
+        self.writer.setup(plt.figure(self.main_figure_number), name, dpi=200)
+        atexit.register(self.cleanup) # Close the writer when python terminates
+
+        # Initialize errors
         self.robot_errors = []
         for i in range(num_robots):
             self.robot_errors.append([])
 
         if disturbance == 'radial_waves':
           self.disturbance = db.radial_waves
-        if disturbance == 'linear':
+        elif disturbance == 'linear':
           self.disturbance = db.linear
         else:
           self.disturbance = db.no_force
 
-        # self.disturbance = db.linear
-
         self.view_mode = "past_trajectories" # or None
         # self.view_mode = None
 
+        # Create the figures
         fig = plt.figure(self.main_figure_number)
         plt.ion()
         plt.show()
-        fig2 = plt.figure(self.error_figure_number)
-        plt.ion()
+        
+        # fig2 = plt.figure(self.error_figure_number)
+        # plt.ion()
+        
+        self.x_min_coord = 0
+        self.x_max_coord = 0
+        self.y_min_coord = 0
+        self.y_max_coord = 0
+
+    def cleanup(self):
+        """Clean up visualization objects.
+
+        Specifically, close the movie writer.
+        """
+        self.logger.info("Finishing writing movie!")
+        self.writer.finish()
 
 
     def draw_messages(self, ax, motions, measurement_arr, color):
@@ -66,23 +92,12 @@ class Visualizer(object):
 
         self.logger.debug("Updating visualization.")
 
-        # get the main update figure, clear it out for our update
-        fig = plt.figure(self.main_figure_number)
-        fig.clf()
-
         # TODO convert to numpy arrays for scalability
         x_robot_gt = []
         y_robot_gt = []
         x_goal = []
         y_goal = []
         headings = []
-
-        # default viewport for the visualizer
-        x_min_coord = 0
-        x_max_coord = 0
-        y_min_coord = 0
-        y_max_coord = 0
-
 
         if(self.view_mode == "past_trajectories"):
             max_num_poses = 0
@@ -165,32 +180,55 @@ class Visualizer(object):
             y_min_coord_temp = min(np.min(robot_beliefs[:,:,1]), min(y_goal))
             y_max_coord_temp = max(np.max(robot_beliefs[:,:,1]), max(y_goal))
 
-        x_min_coord = x_min_coord_temp if x_min_coord_temp < x_min_coord else x_min_coord 
-        x_max_coord = x_max_coord_temp if x_max_coord_temp > x_max_coord else x_max_coord
-        y_min_coord = y_min_coord_temp if y_min_coord_temp < y_min_coord else y_min_coord
-        y_max_coord = y_max_coord_temp if y_max_coord_temp > y_max_coord else y_max_coord
+        # get the main update figure, clear it out for our update
+        # fig = plt.figure(self.main_figure_number)
+        # fig.clf()
+
+        # draw the error graphs
+        # error_fig = plt.figure(self.error_figure_number)
+        # error_fig.clf()
+        # num_subplots = len(robots)
+        # for i in range(1, num_subplots + 1):
+        #     plt.subplot(num_subplots, 1, i)
+        #     plt.plot(self.robot_errors[i-1])
+        
+        # get the main update figure, clear it out for our update
+        fig = plt.figure(self.main_figure_number)
+        fig.clf()
 
         # calculate viewport bounds
-        x_scale = x_max_coord - x_min_coord
-        y_scale = y_max_coord - y_min_coord
 
+        t1 = 2
+        t2 = 2
+
+        self.x_min_coord = min(self.x_min_coord, (np.floor(x_min_coord_temp/t1)*t1)-t2)
+        self.x_max_coord = max(self.x_max_coord, (np.ceil( x_max_coord_temp/t1)*t1)+t2)
+        self.y_min_coord = min(self.y_min_coord, (np.floor(y_min_coord_temp/t1)*t1)-t2)
+        self.y_max_coord = max(self.y_max_coord, (np.ceil( y_max_coord_temp/t1)*t1)+t2)
+
+        x_scale = self.x_max_coord - self.x_min_coord
+        y_scale = self.y_max_coord - self.y_min_coord
+
+        #make the scale the same on each axis
         if(x_scale > y_scale):
-            y_max_coord = ((y_max_coord + y_min_coord)/2) + (x_scale/2)
-            y_min_coord = y_max_coord - x_scale
+            self.y_max_coord = ((self.y_max_coord + self.y_min_coord)/2) + (x_scale/2)
+            self.y_min_coord = self.y_max_coord - x_scale
         else:
-            x_max_coord = ((x_max_coord + x_min_coord)/2) + (y_scale/2)
-            x_min_coord = x_max_coord - y_scale
+            self.x_max_coord = ((self.x_max_coord + self.x_min_coord)/2) + (y_scale/2)
+            self.x_min_coord = self.x_max_coord - y_scale
 
-        scale = max(x_scale, y_scale)
-        margin = scale / 12
+        plt.xlim([self.x_min_coord, self.x_max_coord])
+        plt.ylim([self.y_min_coord, self.y_max_coord])
 
-        plt.xlim([x_min_coord - margin, x_max_coord + margin])
-        plt.ylim([y_min_coord - margin, y_max_coord + margin])
+        # plt.xlim([self.x_min_coord - margin, self.x_max_coord + margin])
+        # plt.ylim([self.y_min_coord - margin, self.y_max_coord + margin])
 
         #draw force fields
-        X, Y = np.meshgrid(np.arange(x_min_coord, x_max_coord, (x_max_coord - x_min_coord)/50), np.arange(y_min_coord, y_max_coord, (y_max_coord - y_min_coord)/50))
-        U = self.disturbance(0*X,X,Y)[1]
-        V = self.disturbance(0*X,X,Y)[2]
+
+        X, Y = np.meshgrid(np.arange(self.x_min_coord, self.x_max_coord,1), 
+                           np.arange(self.y_min_coord, self.y_max_coord,1))
+        U = db.linear(0*X,X,Y)[1]
+        V = db.linear(0*X,X,Y)[2]
         Q = plt.quiver(X, Y, U, V, units='width', color=(0.0, 0.0, 0.0, 0.3))
 
         # draw robots ground truth
@@ -243,15 +281,11 @@ class Visualizer(object):
         self.draw_messages(ax, motions, short_range_measurements, 'r')
         self.draw_messages(ax, motions, long_range_measurements, 'y')
 
-        # draw the error graphs
-        error_fig = plt.figure(self.error_figure_number)
-        error_fig.clf()
-        num_subplots = len(robots)
-        for i in range(1, num_subplots + 1):
-            plt.subplot(num_subplots, 1, i)
-            plt.plot(self.robot_errors[i-1])
-        
-        main_fig = plt.figure(self.main_figure_number)
 
-        plt.pause(0.05)
+
+        plt.pause(0.01)
+
+        self.logger.info("Writing frame to file!")
+        self.writer.grab_frame()
+        
         plt.show()
