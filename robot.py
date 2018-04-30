@@ -201,7 +201,6 @@ class Robot(object):
                 self.initial_ranges[other_id] = []
             for si, r in enumerate(message.measurements):
                 self.initial_ranges[other_id].append((ind, si, r))
-        # elif False:
         else:
             self.update_ids.add(other_id)
             if not self.use_range:
@@ -248,6 +247,9 @@ class Robot(object):
 
         The robot configuration includes a list of goals. This function will
         return the proper current goal.
+
+        Returns:
+            The current goal of the robot.
         """
         return self.my_goals[self.goal_index]
 
@@ -499,9 +501,6 @@ class Robot(object):
         i = self.build_odom_system(A, b, i)
         i = self.build_other_odom_system(A, b, i)
         i = self.build_range_system(A, b, i)
-#        if self.id == 1:
-#          print(A.toarray())
-        #  print("b values", b.min(), b.max())
 
         return A, b
 
@@ -589,19 +588,11 @@ class Robot(object):
             # output as the path that we think the robot must have taken.
             previous_pos = previous_pose[1:].reshape(-1)
             control = self.pid_controller(previous_pos, self.goals[other_id])
-            #control = np.zeros((3, 1))
-            #control = np.array([[0, 1, 0]]).T
-#            if self.t > 30:
-#                control = np.array([[0, 1, 0]]).T
-#            else:
-#                control = np.zeros((3, 1))
+            current_pose = previous_pose + control.reshape(-1, 1) # PID update
+            
             if not other_id in self.other_control:
                 self.other_control[other_id] = []
             self.other_control[other_id].append(control)
-            self.logger.warning("Control: %s", control)
-
-            current_pose = previous_pose + control.reshape(-1, 1) # PID update
-            #current_pose = previous_pose # No update
 
             self.x = np.insert(self.x, j0 + self.pose_dim, current_pose, axis=0)
             self.n_poses[other_id] += 1

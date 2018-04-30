@@ -1,8 +1,13 @@
-import matplotlib.pyplot as plt
-import numpy as np
+import atexit
 import logging
-import disturbances as db
 import pdb
+import time
+
+import disturbances as db
+import matplotlib.pyplot as plt
+import matplotlib.figure as fig
+import matplotlib.animation as manimation
+import numpy as np
 
 
 class Visualizer(object):
@@ -14,20 +19,38 @@ class Visualizer(object):
         """
         self.logger = logging.getLogger(__name__)
         self.logger.info("Starting visualization.")
-
+        
         # Note that these are aliased to the real ones. Don't modify, just read.
         self.main_figure_number = 1
         self.error_figure_number = 2
 
+        # Start the stuff for the movie writer.
+        metadata = dict(title='MAS SLAM Simulation', artist='Awesome Squad')
+        self.writer= manimation.writers['ffmpeg'](fps=10, metadata=metadata)
+        name = "MAS" + "_" + str(int(round(time.time()))) + ".mp4"
+        self.writer.setup(plt.figure(self.main_figure_number), name, dpi=150)
+        atexit.register(self.cleanup) # Close the writer when python terminates
+
+        # Initialize errors
         self.robot_errors = []
         for i in range(num_robots):
             self.robot_errors.append([])
 
+        # Create the figures
         fig = plt.figure(self.main_figure_number)
         plt.ion()
         plt.show()
         fig2 = plt.figure(self.error_figure_number)
         plt.ion()
+
+
+    def cleanup(self):
+        """Clean up visualization objects.
+
+        Specifically, close the movie writer.
+        """
+        self.logger.info("Finishing writing movie!")
+        self.writer.finish()
 
 
     def draw_messages(self, ax, motions, measurement_arr, color):
@@ -110,7 +133,10 @@ class Visualizer(object):
         y_max_coord = y_max_coord_temp if y_max_coord_temp > y_max_coord else y_max_coord
 
         #draw force fields
-        X, Y = np.meshgrid(np.arange(x_min_coord, x_max_coord, (x_max_coord - x_min_coord)/50), np.arange(y_min_coord, y_max_coord, (y_max_coord - y_min_coord)/50))
+        X, Y = np.meshgrid(np.arange(x_min_coord, x_max_coord, 
+                                    (x_max_coord - x_min_coord)/50), 
+                           np.arange(y_min_coord, y_max_coord,
+                                    (y_max_coord - y_min_coord)/50))
         U = db.linear(0*X,X,Y)[1]
         V = db.linear(0*X,X,Y)[2]
         Q = plt.quiver(X, Y, U, V, units='width', color=(0.0, 0.0, 0.0, 0.3))
@@ -161,5 +187,9 @@ class Visualizer(object):
         
         main_fig = plt.figure(self.main_figure_number)
 
-        plt.pause(0.05)
+        plt.pause(0.01)
+
+        self.logger.info("Writing frame to file!")
+        self.writer.grab_frame()
+        
         plt.show()

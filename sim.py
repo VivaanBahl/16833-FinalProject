@@ -4,6 +4,7 @@ import argparse
 import math
 import numpy as np
 import logging
+import multiprocessing
 import time
 import yaml
 
@@ -31,6 +32,12 @@ parser.add_argument(
     type=float,
     default=0.5,
     help="Time to sleep (in seconds) between time steps"
+)
+parser.add_argument(
+    "-x", "--headless",
+    action="store_true",
+    default=False,
+    help="Disable visualization (and movie writing)"
 )
 args = parser.parse_args()
 
@@ -200,7 +207,11 @@ def main():
 
     robots, motions = initialize_robots_and_motions(config)
     num_robots = len(robots)
-    vis = Visualizer(num_robots)
+
+    if not args.headless:
+        vis = Visualizer(num_robots)
+
+    pool = multiprocessing.Pool()
 
     while True:
         # create array of pairs of robots that sent messages
@@ -238,7 +249,9 @@ def main():
             robot.compute()
 
         # Perform visualization update.
-        vis.update(robots, motions, short_range_measurements, long_range_measurements)
+        if not args.headless:
+            vis.update(robots, motions, short_range_measurements, 
+                       long_range_measurements)
 
         # As the final step of the loop, update the timestamp for each robot.
         for robot in robots:
