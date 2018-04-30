@@ -2,7 +2,6 @@ import logging
 import math
 import numpy as np
 import scipy.linalg
-import pdb
 import os
 
 from scipy import linalg
@@ -194,10 +193,9 @@ class Robot(object):
                 self.initial_ranges[other_id] = []
             for si, r in enumerate(message.measurements):
                 self.initial_ranges[other_id].append((ind, si, r))
-        # elif False:
-        else:
+        elif False:
             self.update_ids.add(other_id)
-            # return  # TODO: REMOVE ME
+            #  return # TODO: REMOVE ME
 
             other_ind = self.n_poses[other_id]
             for si, r in enumerate(message.measurements):
@@ -296,18 +294,15 @@ class Robot(object):
 
 
     def iterative_update(self, A, b):
-        # try:
         A_sp = csc_matrix(A.T.dot(A))
-        # print("condition number = {}".format(np.linalg.cond(A_sp.todense())))
         A_splu = splu(A_sp)
         prev_x = self.x
         dx = A_splu.solve(A.T.dot(b))
         self.x = prev_x + dx
-        # except Exception as e:
-            # pdb.set_trace()
 
-        # print("A = ")
-        # print(A.todense())
+        print("WATCH ME:")
+        print(self.x.T.max())
+        print(prev_x.T.max())
         if(euclidean(self.x,prev_x) < self.stopping_threshold):
             return False
         return True
@@ -557,8 +552,8 @@ class Robot(object):
             control = self.pid_controller(previous_pos, self.goals[other_id])
             self.logger.warning("Control: %s", control)
             
-            current_pose = previous_pose + control.reshape(-1, 1) # PID update
-            # current_pose = previous_pose # No update
+            #  current_pose = previous_pose + control.reshape(-1, 1) # PID update
+            current_pose = previous_pose # No update
 
             self.x = np.insert(self.x, j0 + self.pose_dim, current_pose, axis=0)
             self.n_poses[other_id] += 1
