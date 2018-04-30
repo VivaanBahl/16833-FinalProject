@@ -5,6 +5,7 @@ import math
 import numpy as np
 import logging
 import multiprocessing
+import sys
 import time
 import yaml
 
@@ -13,7 +14,6 @@ from robot_motion import RobotMotion
 from vis import Visualizer
 from long_range_message import LongRangeMessage
 from sensor_model import SensorModel
-import disturbances as db
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -31,13 +31,20 @@ parser.add_argument(
     "-d", "--delay",
     type=float,
     default=0.5,
-    help="Time to sleep (in seconds) between time steps"
+    help="Time to sleep (in seconds) between time steps."
 )
 parser.add_argument(
     "-x", "--headless",
     action="store_true",
     default=False,
-    help="Disable visualization (and movie writing)"
+    help="Disable visualization (and movie writing)."
+)
+parser.add_argument(
+    "-t", "--time",
+    type=int,
+    default=25,
+    help="Number of iterations to run the simulator for before exiting. "
+         " A time of 0 will result in an infinite simulation."
 )
 args = parser.parse_args()
 
@@ -209,10 +216,11 @@ def main():
     num_robots = len(robots)
 
     if not args.headless:
-        vis = Visualizer(num_robots)
+        vis = Visualizer(num_robots, config['motion_parameters']['disturbance'])
 
     pool = multiprocessing.Pool()
 
+    elapsed = 0
     while True:
         # create array of pairs of robots that sent messages
         long_range_measurements = []
@@ -256,6 +264,11 @@ def main():
         # As the final step of the loop, update the timestamp for each robot.
         for robot in robots:
             robot.step(1)
+
+        # Potentially exit the simulation.
+        elapsed += 1
+        if args.time > 0 and elapsed >= args.time:
+            sys.exit(0)
 
         # Sleep for some amount of time.
         if (args.delay > 0):
