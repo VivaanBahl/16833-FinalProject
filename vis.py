@@ -23,6 +23,9 @@ class Visualizer(object):
         for i in range(num_robots):
             self.robot_errors.append([])
 
+        self.view_mode = "past_trajectories" # or None
+        # self.view_mode = None
+
         fig = plt.figure(self.main_figure_number)
         plt.ion()
         plt.show()
@@ -66,43 +69,89 @@ class Visualizer(object):
         y_goal = []
         headings = []
 
-        # create square matrix showing all the robots' beliefs about each other
-        robot_beliefs = np.zeros([len(robots), len(robots), 2])  # 2 bc of x and y
-
         # default viewport for the visualizer
         x_min_coord = 0
         x_max_coord = 0
         y_min_coord = 0
         y_max_coord = 0
 
-        for i, motion in enumerate(motions):
-            self.logger.debug("Robot {} has pos {}, vel {}".format(i, motion.pos, motion.vel))
 
-            pos = motion.pos
-            x_robot_gt.append(pos[0])
-            y_robot_gt.append(pos[1])
+        if(self.view_mode == "past_trajectories"):
+            max_num_poses = 0
+            for i in range(0,len(robots)):
+                for j in range(0,len(robots)):
+                    max_num_poses = max(max_num_poses, robots[i].n_poses[j])
 
-            robot = robots[i]
-            goal = robot.goal
-            x_goal.append(goal[0])
-            y_goal.append(goal[1])
 
-            for other_robot_id in range(0, len(robots)):
-                (other_bel_x, other_bel_y) = robot.robot_pos(other_robot_id)
-                if other_bel_x is not None:
-                    robot_beliefs[i, other_robot_id, 0] = other_bel_x
-                    robot_beliefs[i, other_robot_id, 1] = other_bel_y
+            # create square matrix showing all the robots' beliefs about each other
+            robot_beliefs = np.zeros([len(robots), len(robots), max_num_poses, 2])  # 2 bc of x and y
 
-            self.robot_errors[i].append(self.get_euclidean_error(pos, robot_beliefs[i, i, :]))
+            for i, motion in enumerate(motions):
+                self.logger.debug("Robot {} has pos {}, vel {}".format(i, motion.pos, motion.vel))
 
-            vel = motion.vel
-            headings.append((vel[0], vel[1]))
+                pos = motion.pos
+                x_robot_gt.append(pos[0])
+                y_robot_gt.append(pos[1])
 
-        # set the viewport bounds according to all the beliefs and goals
-        x_min_coord_temp = min(np.min(robot_beliefs[:,:,0]), min(x_goal))
-        x_max_coord_temp = max(np.max(robot_beliefs[:,:,0]), max(x_goal))
-        y_min_coord_temp = min(np.min(robot_beliefs[:,:,1]), min(y_goal))
-        y_max_coord_temp = max(np.max(robot_beliefs[:,:,1]), max(y_goal))
+                robot = robots[i]
+                goal = robot.goal
+                x_goal.append(goal[0])
+                y_goal.append(goal[1])
+
+                for other_robot_id in range(0, len(robots)):
+                    if other_robot_id in robot.n_poses:
+                        for pose_index in range(0, robot.n_poses[other_robot_id]):
+
+                            start = sum([robot.n_poses[id] for id in robot.n_poses if id < other_robot_id])
+
+                            j0 = robot.pose_dim * (start + pose_index)
+
+                            robot_beliefs[i, other_robot_id, pose_index, 0] = robot.x[j0 + 1]
+                            robot_beliefs[i, other_robot_id, pose_index, 1] = robot.x[j0 + 2]
+
+                self.robot_errors[i].append(self.get_euclidean_error(pos, robot_beliefs[i, i, robot.n_poses[i] -1, :]))
+
+                vel = motion.vel
+                headings.append((vel[0], vel[1]))
+
+            # set the viewport bounds according to all the beliefs and goals
+            x_min_coord_temp = min(np.min(robot_beliefs[:,:,:,0]), min(x_goal))
+            x_max_coord_temp = max(np.max(robot_beliefs[:,:,:,0]), max(x_goal))
+            y_min_coord_temp = min(np.min(robot_beliefs[:,:,:,1]), min(y_goal))
+            y_max_coord_temp = max(np.max(robot_beliefs[:,:,:,1]), max(y_goal))
+
+        else:
+
+            robot_beliefs = np.zeros([len(robots), len(robots), 2])  # 2 bc of x and y
+
+            for i, motion in enumerate(motions):
+                self.logger.debug("Robot {} has pos {}, vel {}".format(i, motion.pos, motion.vel))
+
+                pos = motion.pos
+                x_robot_gt.append(pos[0])
+                y_robot_gt.append(pos[1])
+
+                robot = robots[i]
+                goal = robot.goal
+                x_goal.append(goal[0])
+                y_goal.append(goal[1])
+
+                for other_robot_id in range(0, len(robots)):
+                    (other_bel_x, other_bel_y) = robot.robot_pos(other_robot_id)
+                    if other_bel_x is not None:
+                        robot_beliefs[i, other_robot_id, 0] = other_bel_x
+                        robot_beliefs[i, other_robot_id, 1] = other_bel_y
+
+                self.robot_errors[i].append(self.get_euclidean_error(pos, robot_beliefs[i, i, :]))
+
+                vel = motion.vel
+                headings.append((vel[0], vel[1]))
+
+            # set the viewport bounds according to all the beliefs and goals
+            x_min_coord_temp = min(np.min(robot_beliefs[:,:,0]), min(x_goal))
+            x_max_coord_temp = max(np.max(robot_beliefs[:,:,0]), max(x_goal))
+            y_min_coord_temp = min(np.min(robot_beliefs[:,:,1]), min(y_goal))
+            y_max_coord_temp = max(np.max(robot_beliefs[:,:,1]), max(y_goal))
 
         x_min_coord = x_min_coord_temp if x_min_coord_temp < x_min_coord else x_min_coord 
         x_max_coord = x_max_coord_temp if x_max_coord_temp > x_max_coord else x_max_coord
@@ -115,17 +164,38 @@ class Visualizer(object):
         V = db.linear(0*X,X,Y)[2]
         Q = plt.quiver(X, Y, U, V, units='width', color=(0.0, 0.0, 0.0, 0.3))
 
-
         # draw robots ground truth
         plt.scatter(x_robot_gt, y_robot_gt, c='k', marker='o')
 
-        # draw the robot belief as their own individual colors
-        for i in range(0, len(robots)):
-            robot_i_beliefs_x = robot_beliefs[i, :, 0]
-            robot_i_beliefs_y = robot_beliefs[i, :, 1]
-            plt.scatter(robot_i_beliefs_x, robot_i_beliefs_y, marker='o')
-            for j in range(len(robot_i_beliefs_x)):
-                plt.annotate(xy=(robot_i_beliefs_x[j], robot_i_beliefs_y[j]), s="robot {}".format(j))
+        if(self.view_mode == "past_trajectories"):
+            # draw the robot belief as their own individual colors
+            for i in range(0, len(robots)):
+                belief_x = np.ndarray([])
+                belief_y = np.ndarray([])
+
+                i_x = 0
+                i_y = 0
+
+                for other_robot_id in range(0, len(robots)):
+                    belief_x = np.append(belief_x, robot_beliefs[i, other_robot_id, 0:robots[i].n_poses[other_robot_id], 0])
+                    belief_y = np.append(belief_y, robot_beliefs[i, other_robot_id, 0:robots[i].n_poses[other_robot_id], 1])
+
+                    if(other_robot_id == i):
+                        i_x = len(belief_x)-1
+                        i_y = len(belief_y)-1
+
+                
+                plt.scatter(belief_x, belief_y, marker='o')
+
+                plt.annotate(xy=(belief_x[i_x], belief_y[i_y]), s="{}".format(i))
+
+        else:
+            for i in range(0, len(robots)):
+                robot_i_beliefs_x = robot_beliefs[i, :, 0]
+                robot_i_beliefs_y = robot_beliefs[i, :, 1]
+                plt.scatter(robot_i_beliefs_x, robot_i_beliefs_y, marker='o')
+                for j in range(len(robot_i_beliefs_x)):
+                    plt.annotate(xy=(robot_i_beliefs_x[j], robot_i_beliefs_y[j]), s="{}".format(j))
 
         robot_legend_labels = ["Robot {} beliefs".format(i) for i in range(0, len(robots))]
         robot_legend_labels = ["Disturbance Field", "Ground Truths"] + robot_legend_labels
