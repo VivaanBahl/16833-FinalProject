@@ -127,8 +127,7 @@ class Visualizer(object):
 
         robot_legend_labels = ["Robot {} beliefs".format(i) for i in range(0, len(robots))]
         robot_legend_labels = ["Disturbance Field", "Ground Truths"] + robot_legend_labels
-        plt.legend(robot_legend_labels)
-
+        plt.legend(robot_legend_labels,loc='upper center', bbox_to_anchor=(0.5, 1.15), fancybox = True, ncol = 2)
 
         # draw "headings" aka the velocity vectors
         ax = plt.axes()
