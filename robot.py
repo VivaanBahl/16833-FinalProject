@@ -197,7 +197,6 @@ class Robot(object):
             self.update_ids.add(other_id)
             if not self.use_range:
               return
-
             other_ind = self.n_poses[other_id]
             for si, r in enumerate(message.measurements):
                 #measurements stored as (self_pose_index, other_id,
@@ -301,9 +300,7 @@ class Robot(object):
         dx = A_splu.solve(A.T.dot(b))
         self.x = prev_x + dx
 
-        print("WATCH ME:")
-        print(self.x.T.max())
-        print(prev_x.T.max())
+        self.logger.error("WATCH ME: %f, %f", self.x.T.max(), prev_x.T.max())
         if(euclidean(self.x,prev_x) < self.stopping_threshold):
             return False
         return True
@@ -465,6 +462,7 @@ class Robot(object):
         i = self.build_range_system(A, b, i)
 #        if self.id == 1:
 #          print(A.toarray())
+        print("b values", b.min(), b.max())
 
         return A, b
 
@@ -551,8 +549,9 @@ class Robot(object):
             # information and pass them through the PID controller. Treat that
             # output as the path that we think the robot must have taken.
             previous_pos = previous_pose[1:].reshape(-1)
-            #control = self.pid_controller(previous_pos, self.goals[other_id])
-            control = np.zeros((3, 1))
+            control = self.pid_controller(previous_pos, self.goals[other_id])
+            #control = np.zeros((3, 1))
+            #control = np.array([[0, 1, 0]]).T
 #            if self.t > 30:
 #                control = np.array([[0, 1, 0]]).T
 #            else:
@@ -562,8 +561,8 @@ class Robot(object):
             self.other_control[other_id].append(control)
             self.logger.warning("Control: %s", control)
 
-            #current_pose = previous_pose + control.reshape(-1, 1) # PID update
-            current_pose = previous_pose # No update
+            current_pose = previous_pose + control.reshape(-1, 1) # PID update
+            #current_pose = previous_pose # No update
 
             self.x = np.insert(self.x, j0 + self.pose_dim, current_pose, axis=0)
             self.n_poses[other_id] += 1
