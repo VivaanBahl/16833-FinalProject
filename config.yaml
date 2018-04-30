@@ -7,7 +7,7 @@ robot_parameters:
     - start: [  0,  0, 0]
       goal:  [ 25, 0]
 slam_parameters:
-    use_range: true
+    use_range: false
     sigma_initial: [
         [0.001, 0.0, 0.0],
         [0.0, 0.1, 0.0],
@@ -24,7 +24,7 @@ slam_parameters:
         [0.0, 0.0, 10]
     ]
     sigma_range: [
-        [0.1]
+        [1e-6]
     ]
 motion_parameters:
     disturbance: no_force
@@ -48,4 +48,4 @@ sensor_parameters:
     - delta: [-1, 0]
       orientation: 0
       fov: 360
-sensor_sigma: 0.1
+sensor_sigma: 0.0
