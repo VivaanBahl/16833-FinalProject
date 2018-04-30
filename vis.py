@@ -124,11 +124,12 @@ class Visualizer(object):
             robot_i_beliefs_x = robot_beliefs[i, :, 0]
             robot_i_beliefs_y = robot_beliefs[i, :, 1]
             plt.scatter(robot_i_beliefs_x, robot_i_beliefs_y, marker='o')
+            for j in range(len(robot_i_beliefs_x)):
+                plt.annotate(xy=(robot_i_beliefs_x[j], robot_i_beliefs_y[j]), s="robot {}".format(j))
 
         robot_legend_labels = ["Robot {} beliefs".format(i) for i in range(0, len(robots))]
         robot_legend_labels = ["Disturbance Field", "Ground Truths"] + robot_legend_labels
-        plt.legend(robot_legend_labels)
-
+        plt.legend(robot_legend_labels,loc='upper center', bbox_to_anchor=(0.5, 1.15), fancybox = True, ncol = 2)
 
         # draw "headings" aka the velocity vectors
         ax = plt.axes()
