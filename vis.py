@@ -158,6 +158,8 @@ class Visualizer(object):
         for i in range(1, num_subplots + 1):
             plt.subplot(num_subplots, 1, i)
             plt.plot(self.robot_errors[i-1])
+        
+        main_fig = plt.figure(self.main_figure_number)
 
         plt.pause(0.05)
         plt.show()
