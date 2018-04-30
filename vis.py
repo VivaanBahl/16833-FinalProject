@@ -4,9 +4,8 @@ import logging
 import disturbances as db
 import pdb
 
-
 class Visualizer(object):
-    def __init__(self, num_robots):
+    def __init__(self, num_robots, disturbance):
         """Initialize visualizer with program data.
 
         Args:
@@ -22,6 +21,15 @@ class Visualizer(object):
         self.robot_errors = []
         for i in range(num_robots):
             self.robot_errors.append([])
+
+        if disturbance == 'radial_waves':
+          self.disturbance = db.radial_waves
+        if disturbance == 'linear':
+          self.disturbance = db.linear
+        else:
+          self.disturbance = db.no_force
+
+        # self.disturbance = db.linear
 
         self.view_mode = "past_trajectories" # or None
         # self.view_mode = None
@@ -94,9 +102,11 @@ class Visualizer(object):
                 y_robot_gt.append(pos[1])
 
                 robot = robots[i]
-                goal = robot.get_current_goal()
-                x_goal.append(goal[0])
-                y_goal.append(goal[1])
+
+                for goal_index in range(0, robot.goal_index + 1):
+                    goal = robot.my_goals[goal_index]
+                    x_goal.append(goal[0])
+                    y_goal.append(goal[1])
 
                 for other_robot_id in range(0, len(robots)):
                     if other_robot_id in robot.n_poses:
@@ -132,9 +142,11 @@ class Visualizer(object):
                 y_robot_gt.append(pos[1])
 
                 robot = robots[i]
-                goal = robot.get_current_goal()
-                x_goal.append(goal[0])
-                y_goal.append(goal[1])
+
+                for goal_index in range(0, robot.goal_index + 1):
+                    goal = robot.my_goals[goal_index]
+                    x_goal.append(goal[0])
+                    y_goal.append(goal[1])
 
                 for other_robot_id in range(0, len(robots)):
                     (other_bel_x, other_bel_y) = robot.robot_pos(other_robot_id)
@@ -158,10 +170,27 @@ class Visualizer(object):
         y_min_coord = y_min_coord_temp if y_min_coord_temp < y_min_coord else y_min_coord
         y_max_coord = y_max_coord_temp if y_max_coord_temp > y_max_coord else y_max_coord
 
+        # calculate viewport bounds
+        x_scale = x_max_coord - x_min_coord
+        y_scale = y_max_coord - y_min_coord
+
+        if(x_scale > y_scale):
+            y_max_coord = ((y_max_coord + y_min_coord)/2) + (x_scale/2)
+            y_min_coord = y_max_coord - x_scale
+        else:
+            x_max_coord = ((x_max_coord + x_min_coord)/2) + (y_scale/2)
+            x_min_coord = x_max_coord - y_scale
+
+        scale = max(x_scale, y_scale)
+        margin = scale / 12
+
+        plt.xlim([x_min_coord - margin, x_max_coord + margin])
+        plt.ylim([y_min_coord - margin, y_max_coord + margin])
+
         #draw force fields
         X, Y = np.meshgrid(np.arange(x_min_coord, x_max_coord, (x_max_coord - x_min_coord)/50), np.arange(y_min_coord, y_max_coord, (y_max_coord - y_min_coord)/50))
-        U = db.linear(0*X,X,Y)[1]
-        V = db.linear(0*X,X,Y)[2]
+        U = self.disturbance(0*X,X,Y)[1]
+        V = self.disturbance(0*X,X,Y)[2]
         Q = plt.quiver(X, Y, U, V, units='width', color=(0.0, 0.0, 0.0, 0.3))
 
         # draw robots ground truth
@@ -197,6 +226,7 @@ class Visualizer(object):
                 for j in range(len(robot_i_beliefs_x)):
                     plt.annotate(xy=(robot_i_beliefs_x[j], robot_i_beliefs_y[j]), s="{}".format(j))
 
+        #draw legends
         robot_legend_labels = ["Robot {} beliefs".format(i) for i in range(0, len(robots))]
         robot_legend_labels = ["Disturbance Field", "Ground Truths"] + robot_legend_labels
         plt.legend(robot_legend_labels,loc='upper center', bbox_to_anchor=(0.5, 1.15), fancybox = True, ncol = 2)
@@ -212,22 +242,6 @@ class Visualizer(object):
         # draw messages being sent between robots
         self.draw_messages(ax, motions, short_range_measurements, 'r')
         self.draw_messages(ax, motions, long_range_measurements, 'y')
-
-        # calculate viewport bounds
-        x_scale = x_max_coord - x_min_coord
-        y_scale = y_max_coord - y_min_coord
-
-        min_coord 
-        scale = max(x_scale, y_scale)
-        margin = scale / 12
-        # x_margin = x_scale / 12
-        # y_margin = y_scale / 12
-        # plt.xlim([x_min_coord - x_margin, x_max_coord + x_margin])
-        # plt.ylim([y_min_coord - y_margin, y_max_coord + y_margin])
-
-        plt.xlim([x_min_coord - x_margin, x_max_coord + x_margin])
-        plt.ylim([y_min_coord - y_margin, y_max_coord + y_margin])
-
 
         # draw the error graphs
         error_fig = plt.figure(self.error_figure_number)
