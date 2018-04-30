@@ -132,7 +132,7 @@ class Visualizer(object):
                 y_robot_gt.append(pos[1])
 
                 robot = robots[i]
-                goal = robot.goal
+                goal = robot.get_current_goal()
                 x_goal.append(goal[0])
                 y_goal.append(goal[1])
 
@@ -216,10 +216,18 @@ class Visualizer(object):
         # calculate viewport bounds
         x_scale = x_max_coord - x_min_coord
         y_scale = y_max_coord - y_min_coord
-        x_margin = x_scale / 12
-        y_margin = y_scale / 12
+
+        min_coord 
+        scale = max(x_scale, y_scale)
+        margin = scale / 12
+        # x_margin = x_scale / 12
+        # y_margin = y_scale / 12
+        # plt.xlim([x_min_coord - x_margin, x_max_coord + x_margin])
+        # plt.ylim([y_min_coord - y_margin, y_max_coord + y_margin])
+
         plt.xlim([x_min_coord - x_margin, x_max_coord + x_margin])
         plt.ylim([y_min_coord - y_margin, y_max_coord + y_margin])
+
 
         # draw the error graphs
         error_fig = plt.figure(self.error_figure_number)
