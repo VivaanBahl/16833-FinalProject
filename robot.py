@@ -47,10 +47,11 @@ class Robot(object):
         self.sigma_other_odom_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_other_odom))
         self.sigma_range_inv = np.linalg.inv(scipy.linalg.sqrtm(sigma_range))
 
-        self.sensor_deltas = [np.array(s['delta'])
+        self.sensor_deltas = [np.array(s['delta'], dtype=float)
                               for s in config['sensor_parameters']]
         self.use_range = config['use_range']
         self.start_pos = config['start']
+        self.short_range_history = config['short_range_history']
 
         # Motion Controller Params
         self.kp_pos = .1
@@ -98,11 +99,13 @@ class Robot(object):
         j0 = self.pose_dim * (start + self.n_poses[robot_id] - 1)
         return j0
 
-    def sensor_pose(self, ind, si):
+    def sensor_pose(self, ind, si, x = None):
+        if x is None:
+            x = self.x
         delta = self.sensor_deltas[si]
         j = self.first_pose_ind(self.id) + self.pose_dim * ind
-        pos = self.x[j+1:j+3, 0]
-        th = self.x[j, 0]
+        pos = x[j+1:j+3, 0]
+        th = x[j, 0]
         R = np.array([[np.cos(th), -np.sin(th)],
                       [np.sin(th),  np.cos(th)]])
         return pos + R.dot(delta)
@@ -175,8 +178,11 @@ class Robot(object):
         self.logger.debug("Received short range message %s", message)
         #ignore message if in odom-only mode
         if not self.use_range:
-          return
-
+            return
+        #overwrite controls with odometry from short range message
+        id = message['id']
+        n = len(message['data'])
+        self.other_control[id][-n:] = message['data']
 
     def receive_long_range_message(self, message):
         """Handle a long range message.
@@ -186,6 +192,8 @@ class Robot(object):
         """
         self.logger.debug("Received long range message %s", message)
         #ignore message if in odom-only mode
+        if not self.use_range:
+            return
         other_id = message.data['id']
         ind = self.n_poses[self.id]
 
@@ -203,8 +211,6 @@ class Robot(object):
                 self.initial_ranges[other_id].append((ind, si, r))
         else:
             self.update_ids.add(other_id)
-            if not self.use_range:
-              return
             other_ind = self.n_poses[other_id]
             for si, r in enumerate(message.measurements):
                 #measurements stored as (self_pose_index, other_id,
@@ -237,7 +243,8 @@ class Robot(object):
         """
 
         message = {"id": self.config['id']}
-        message["data"] = [2]
+        n = min(self.short_range_history, len(self.odom_measurements))
+        message["data"] = self.odom_measurements[-n:]
         self.logger.debug("Returning short range message %s", message)
         return message
 
@@ -339,6 +346,10 @@ class Robot(object):
         A_splu = splu(A_sp)
         prev_x = self.x
         dx = A_splu.solve(A.T.dot(b))
+        if self.meas_err(prev_x + dx) > self.meas_err(prev_x):
+          #error went up, stop iterating now
+          self.logger.debug("Error went up from %f to %f", self.meas_err(prev_x), self.meas_err(prev_x + dx))
+          return False
         self.x = prev_x + dx
 
         #  self.logger.error("WATCH ME: %f, %f", self.x.T.max(), prev_x.T.max())
@@ -346,6 +357,75 @@ class Robot(object):
             return False
         return True
 
+
+    def prior_err(self, x):
+        j0 = self.first_pose_ind(self.id)
+        p0 = x[j0:j0 + self.pose_dim, 0]
+        dz = self.start_pos - p0
+        sigma = self.sigma_init_inv.dot(self.sigma_init_inv)
+        return dz.T.dot(sigma.dot(dz))
+
+    def odom_err(self, x):
+        j_start = self.first_pose_ind(self.id)
+        err = 0
+        for ind, m in enumerate(self.odom_measurements):
+            j0 = j_start + self.pose_dim * ind
+            j1 = j_start + self.pose_dim * (ind + 1)
+            p0 = x[j0:j0 + self.pose_dim]
+            p1 = x[j1:j1 + self.pose_dim]
+            #TODO: odom measurements should be multiplied by dt
+            mPred = p1 - p0
+            mPred[0] = self.wrap_to_pi(mPred[0])
+            dz = m - mPred
+            dz[0] = self.wrap_to_pi(dz[0])
+            sigma = self.sigma_odom_inv.dot(self.sigma_odom_inv)
+            err += dz.T.dot(sigma.dot(dz))
+        return err
+
+    def other_odom_err(self, x):
+        err = 0
+        for id in self.n_poses:
+            if id == self.id:
+                continue
+            j_start = self.first_pose_ind(id)
+            for ind in range(self.n_poses[id] - 1):
+                j0 = j_start + self.pose_dim * ind
+                j1 = j_start + self.pose_dim * (ind + 1)
+                p0 = x[j0:j0 + self.pose_dim]
+                p1 = x[j1:j1 + self.pose_dim]
+                mPred = p1 - p0
+                mPred[0] = self.wrap_to_pi(mPred[0])
+                control = self.other_control[id][ind].reshape((-1, 1))
+                dz = control-mPred
+                dz[0] = self.wrap_to_pi(dz[0])
+                sigma = self.sigma_other_odom_inv.dot(self.sigma_other_odom_inv)
+                err += dz.T.dot(sigma.dot(dz))
+        return err
+
+    def range_err(self, x):
+        err = 0
+        for ind, other_id, other_ind, si, rMeas in self.range_measurements:
+            j0 = self.first_pose_ind(self.id) + self.pose_dim * ind
+            j1 = self.first_pose_ind(other_id) + self.pose_dim * other_ind
+
+            th = x[j0, 0]
+            pos0 = self.sensor_pose(ind, si, x)
+            pos1 = x[j1+1:j1 + self.pose_dim, 0]
+            delta = self.sensor_deltas[si]
+            d = pos0 - pos1
+            r = np.linalg.norm(d)
+
+            dz = np.array((rMeas - r))
+            sigma = self.sigma_range_inv.dot(self.sigma_range_inv)
+            err += dz.T.dot(sigma.dot(dz))
+        return err
+
+    def meas_err(self, x):
+        err = self.prior_err(x)
+        err += self.odom_err(x)
+        err += self.other_odom_err(x)
+        err += self.range_err(x)
+        return err
 
     def build_odom_system(self, A, b, i0):
         """builds the block of A and b corresponding to odometry measurements
@@ -549,6 +629,26 @@ class Robot(object):
         #Try to estimate the initial position of newly visible robots
         done_triangulating = []
 
+        # For all other robots (which have already been localized), update their
+        # poses, at exactly the same place (for now).
+        for other_id in self.update_ids:
+            j0 = self.last_pose_ind(other_id)
+            previous_pose = self.x[j0:j0+self.pose_dim]
+
+            # To compute the update, take the previous position and current goal
+            # information and pass them through the PID controller. Treat that
+            # output as the path that we think the robot must have taken.
+            previous_pos = previous_pose[1:].reshape(-1)
+            control = self.pid_controller(previous_pos, self.goals[other_id])
+            current_pose = previous_pose + control.reshape(-1, 1) # PID update
+
+            if not other_id in self.other_control:
+                self.other_control[other_id] = []
+            self.other_control[other_id].append(control)
+
+            self.x = np.insert(self.x, j0 + self.pose_dim, current_pose, axis=0)
+            self.n_poses[other_id] += 1
+
         # First time you see each robot (with enough measurements), do some
         # triangulation.
         for other_id in self.initial_ranges.keys():
@@ -560,6 +660,7 @@ class Robot(object):
                 p_new = np.vstack(([0], pos))
                 self.x = np.insert(self.x, j0, p_new, axis=0)
                 self.n_poses[other_id] = 1
+                #self.update_ids.add(other_id)
 
                 #Use the most recent measurement for SLAM
                 #TODO: Should probably incorporate all measurements for SLAM
@@ -577,25 +678,6 @@ class Robot(object):
         for other_id in done_triangulating:
             del self.initial_ranges[other_id]
 
-        # For all other robots (which have already been localized), update their
-        # poses, at exactly the same place (for now).
-        for other_id in self.update_ids:
-            j0 = self.last_pose_ind(other_id)
-            previous_pose = self.x[j0:j0+self.pose_dim]
-
-            # To compute the update, take the previous position and current goal
-            # information and pass them through the PID controller. Treat that
-            # output as the path that we think the robot must have taken.
-            previous_pos = previous_pose[1:].reshape(-1)
-            control = self.pid_controller(previous_pos, self.goals[other_id])
-            current_pose = previous_pose + control.reshape(-1, 1) # PID update
-            
-            if not other_id in self.other_control:
-                self.other_control[other_id] = []
-            self.other_control[other_id].append(control)
-
-            self.x = np.insert(self.x, j0 + self.pose_dim, current_pose, axis=0)
-            self.n_poses[other_id] += 1
 
         # Build the system to solve.
         for i in range(0,self.max_iterations):

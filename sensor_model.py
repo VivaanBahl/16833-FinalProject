@@ -24,7 +24,7 @@ class SensorModel(object):
             motion1: RobotMotion object corresponding to robot 1.
             i: Index of sensor to check on robot 1.
             motion2: RobotMotion object corresponding to robot 2.
-        
+
         Returns:
             None if the robot isn't able to be seen.
             Sampled distance if the robot is able to be seen.
@@ -39,13 +39,13 @@ class SensorModel(object):
 
         # Position of the sensor in the world frame.
         sensor = self.config['sensor_parameters'][i]
-        sensor_pos = motion1.pos + rot.dot(np.array(sensor['delta']))
+        sensor_pos = motion1.pos + rot.dot(np.array(sensor['delta'], dtype=float))
         #  print("Sensor %d position: %s" % (i, sensor_pos))
-       
+
         # Compute the vector to the other robot
         delta = motion2.pos - sensor_pos
         #  print("Delta:", delta)
-       
+
         # Determine the angle to the other robot
         angle = self.wrapToPi(math.atan2(delta[1], delta[0]))
         #  print("Angle: ", math.degrees(angle))
@@ -59,6 +59,6 @@ class SensorModel(object):
 
         if abs(angle_diff) <= math.radians(sensor['fov']) / 2:
             # We can see the robot!
-            return np.random.normal(np.linalg.norm(delta), 
+            return np.random.normal(np.linalg.norm(delta),
                                     self.config['sensor_sigma'])
         return None

@@ -1,6 +1,6 @@
-short_thresh: 2
+short_thresh: 10
 long_thresh: 30
-num_robots: 1
+num_robots: 3
 goal_parameters:
     threshold: 0.5
     loiter_time: 5
@@ -21,6 +21,7 @@ robot_parameters:
     ]
 slam_parameters:
     use_range: true
+    short_range_history: 10
     sigma_initial: [
         [0.001, 0.0, 0.0],
         [0.0, 0.1, 0.0],
@@ -57,13 +58,13 @@ motion_parameters:
         [0.0, 0.0, 0.001]
     ]
 sensor_parameters:
-    - delta: [0,  1]
+    - delta: [0,  .1]
       orientation: 0
       fov: 360
-    - delta: [0, -1]
+    - delta: [0, -.1]
       orientation: 180
       fov: 360
-    - delta: [-1, 0]
+    - delta: [-.1, 0]
       orientation: 0
       fov: 360
-sensor_sigma: 0.1
+sensor_sigma: 0.01
