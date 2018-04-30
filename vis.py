@@ -98,11 +98,16 @@ class Visualizer(object):
             vel = motion.vel
             headings.append((vel[0], vel[1]))
 
-        # set the viewport bounds according to all the beliefs and goa
-        x_min_coord = min(np.min(robot_beliefs[:,:,0]), min(x_goal))
-        x_max_coord = max(np.max(robot_beliefs[:,:,0]), max(x_goal))
-        y_min_coord = min(np.min(robot_beliefs[:,:,1]), min(y_goal))
-        y_max_coord = max(np.max(robot_beliefs[:,:,1]), max(y_goal))
+        # set the viewport bounds according to all the beliefs and goals
+        x_min_coord_temp = min(np.min(robot_beliefs[:,:,0]), min(x_goal))
+        x_max_coord_temp = max(np.max(robot_beliefs[:,:,0]), max(x_goal))
+        y_min_coord_temp = min(np.min(robot_beliefs[:,:,1]), min(y_goal))
+        y_max_coord_temp = max(np.max(robot_beliefs[:,:,1]), max(y_goal))
+
+        x_min_coord = x_min_coord_temp if x_min_coord_temp < x_min_coord else x_min_coord 
+        x_max_coord = x_max_coord_temp if x_max_coord_temp > x_max_coord else x_max_coord
+        y_min_coord = y_min_coord_temp if y_min_coord_temp < y_min_coord else y_min_coord
+        y_max_coord = y_max_coord_temp if y_max_coord_temp > y_max_coord else y_max_coord
 
         #draw force fields
         X, Y = np.meshgrid(np.arange(x_min_coord, x_max_coord, (x_max_coord - x_min_coord)/50), np.arange(y_min_coord, y_max_coord, (y_max_coord - y_min_coord)/50))
