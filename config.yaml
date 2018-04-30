@@ -1,6 +1,6 @@
 short_thresh: 2
 long_thresh: 30
-num_robots: 1
+num_robots: 3
 goal_parameters:
     threshold: 0.5
     loiter_time: 5

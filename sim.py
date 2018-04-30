@@ -46,6 +46,19 @@ parser.add_argument(
     help="Number of iterations to run the simulator for before exiting. "
          " A time of 0 will result in an infinite simulation."
 )
+parser.add_argument(
+    "-m", "--multiprocessing",
+    action="store_true",
+    default=False,
+    help="Use multiprocessing during the compute step."
+)
+parser.add_argument(
+    "-l", "--loglevel",
+    type=lambda s: s.upper(),
+    choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+    default='DEBUG',
+    help="Set the logging level"
+)
 args = parser.parse_args()
 
 
@@ -204,8 +217,14 @@ def do_short_range_message(config, robot1, robot2, motion1, motion2):
         return True
     return False
 
+
+def compute_map(robot):
+    robot.compute()
+    return robot
+
+
 def main():
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=args.loglevel)
     if not args.random:
         np.random.seed(42)
 
@@ -253,8 +272,15 @@ def main():
                     long_range_measurements.append((i, j))
 
         # Let each robot perform some computation at each time step.
-        for robot in robots:
-            robot.compute()
+        start_time = time.time()
+        if args.multiprocessing:
+            robots = pool.map(compute_map, robots)
+        else:
+            for robot in robots:
+                robot.compute()
+        end_time = time.time()
+        logging.warning("Took %f seconds to perform all computation!",
+                        end_time - start_time)
 
         # Perform visualization update.
         if not args.headless:
