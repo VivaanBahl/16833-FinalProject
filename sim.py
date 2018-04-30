@@ -198,8 +198,8 @@ def main():
         config = yaml.load(f.read())
 
     robots, motions = initialize_robots_and_motions(config)
-    vis = Visualizer()
     num_robots = len(robots)
+    vis = Visualizer(num_robots)
 
     while True:
         # create array of pairs of robots that sent messages
