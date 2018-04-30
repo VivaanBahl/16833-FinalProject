@@ -98,15 +98,11 @@ class Visualizer(object):
             vel = motion.vel
             headings.append((vel[0], vel[1]))
 
-            # if a target is outside of the viewport, set viewport to include it
-            if pos[0] < x_min_coord or goal[0] < x_min_coord:
-                x_min_coord = min(pos[0], goal[0]) - 5
-            if pos[0] > x_max_coord or goal[0] > x_max_coord:
-                x_max_coord = max(pos[0], goal[0]) + 5
-            if pos[1] < y_min_coord or goal[1] < y_min_coord:
-                y_min_coord = min(pos[1], goal[1]) - 5
-            if pos[1] > y_max_coord or goal[1] > y_max_coord:
-                y_max_coord = max(pos[1], goal[1]) + 5
+        # set the viewport bounds according to all the beliefs and goals
+        x_min_coord = min(np.min(robot_beliefs[:,:,0]), min(x_goal))
+        x_max_coord = max(np.max(robot_beliefs[:,:,0]), max(x_goal))
+        y_min_coord = min(np.min(robot_beliefs[:,:,1]), min(y_goal))
+        y_max_coord = max(np.max(robot_beliefs[:,:,1]), max(y_goal))
 
         #draw force fields
         X, Y = np.meshgrid(np.arange(x_min_coord, x_max_coord, (x_max_coord - x_min_coord)/50), np.arange(y_min_coord, y_max_coord, (y_max_coord - y_min_coord)/50))

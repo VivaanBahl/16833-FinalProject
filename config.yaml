@@ -3,9 +3,9 @@ long_thresh: 50
 num_robots: 2
 robot_parameters:
     - start: [  0,  10, 1]
-      goal:  [ 10,  5]
+      goal:  [ 20,  5]
     - start: [  0,  0, 0]
-      goal:  [ 5, 0]
+      goal:  [ 25, 0]
 slam_parameters:
     use_range: true
     sigma_initial: [
