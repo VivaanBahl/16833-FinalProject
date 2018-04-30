@@ -285,7 +285,7 @@ class Visualizer(object):
 
         plt.pause(0.01)
 
-        self.logger.info("Writing frame to file!")
+        self.logger.debug("Writing frame to file!")
         self.writer.grab_frame()
         
         plt.show()

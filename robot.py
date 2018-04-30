@@ -2,7 +2,7 @@ import logging
 import math
 import numpy as np
 import scipy.linalg
-import os
+import shutil
 
 from scipy import linalg
 from scipy.sparse import csc_matrix
@@ -20,11 +20,12 @@ class Robot(object):
         Args:
             config: Configuration file.
         """
-        self.logger = logging.getLogger("Robot %d" % config['id'])
+        self.logger_name = "Robot %d" % config['id']
+        logger = logging.getLogger(self.logger_name)
         np.set_printoptions(precision=3,
-                linewidth=os.get_terminal_size().columns)
+                linewidth=shutil.get_terminal_size((80, 24)).columns)
 
-        self.logger.info("Initializing with config %s", config)
+        logger.info("Initializing with config %s", config)
 
         #initialize settings from config
         self.config = config
@@ -110,6 +111,7 @@ class Robot(object):
                       [np.sin(th),  np.cos(th)]])
         return pos + R.dot(delta)
 
+
     @property
     def pos(self):
         j0 = self.last_pose_ind(self.id)
@@ -175,7 +177,8 @@ class Robot(object):
             message: An object returned by get_short_range_data() call from
                 another robot.
         """
-        self.logger.debug("Received short range message %s", message)
+        logger = logging.getLogger(self.logger_name)
+        logger.debug("Received short range message %s", message)
         #ignore message if in odom-only mode
         if not self.use_range:
             return
@@ -190,7 +193,8 @@ class Robot(object):
         Long range messages should be low bandwidth, for when this robot is far
         away from other robots but still within long range sensor range.
         """
-        self.logger.debug("Received long range message %s", message)
+        logger = logging.getLogger(self.logger_name)
+        logger.debug("Received long range message %s", message)
         #ignore message if in odom-only mode
         if not self.use_range:
             return
@@ -228,7 +232,8 @@ class Robot(object):
         Args:
             message: Odometry measurement as a result of control output.
         """
-        self.logger.debug("Received odometry message %s", message)
+        logger = logging.getLogger(self.logger_name)
+        logger.debug("Received odometry message %s", message)
         self.odom_measurements.append(np.expand_dims(message, axis=1))
 
 
@@ -269,6 +274,7 @@ class Robot(object):
         update to the next goal.
         """
 
+        logger = logging.getLogger(self.logger_name)
         reached = self.get_current_goal() - self.pos
         if np.linalg.norm(reached) <= self.goal_thresh:
             self.at_goal_time += 1
@@ -276,7 +282,7 @@ class Robot(object):
             self.at_goal_time = 0
 
         if self.at_goal_time >= self.loiter_time:
-            self.logger.info("Switching to the next goal!")
+            logger.info("Switching to the next goal!")
             self.goal_index += 1
             self.goal_index = min(self.goal_index, len(self.my_goals) - 1)
 
@@ -296,7 +302,8 @@ class Robot(object):
             "id": self.config['id'],
             "goal": self.get_current_goal(),
         }
-        self.logger.debug("Returning long range message %s", message)
+        logger = logging.getLogger(self.logger_name)
+        logger.debug("Returning long range message %s", message)
         return message
 
 
@@ -335,9 +342,10 @@ class Robot(object):
             Control output to feed into the robot model.
         """
 
+        logger = logging.getLogger(self.logger_name)
         self.control_output = self.pid_controller(self.pos,
                 self.get_current_goal())
-        self.logger.debug("Returning control output %s", self.control_output)
+        logger.debug("Returning control output %s", self.control_output)
         return self.control_output
 
 
@@ -352,7 +360,8 @@ class Robot(object):
           return False
         self.x = prev_x + dx
 
-        #  self.logger.error("WATCH ME: %f, %f", self.x.T.max(), prev_x.T.max())
+        #  logger = logging.getLogger(self.logger_name)
+        #  logger.error("WATCH ME: %f, %f", self.x.T.max(), prev_x.T.max())
         if(euclidean(self.x,prev_x) < self.stopping_threshold):
             return False
         return True
@@ -584,6 +593,7 @@ class Robot(object):
 
         return A, b
 
+
     def triangulate(self, measurements):
         """Triangulate position of other robot based on sensor readings
 
@@ -611,6 +621,7 @@ class Robot(object):
         else:
           return pos
 
+
     def compute(self):
         """Perform all the computation required to process messages.
 
@@ -618,7 +629,8 @@ class Robot(object):
         robot (before .step()). This method should be the one the robot uses to
         perform all of the SLAM updates.
         """
-        self.logger.debug("Computing at time %d", self.t)
+        logger = logging.getLogger(self.logger_name)
+        logger.debug("Computing at time %d", self.t)
 
         #use previous pose as current pose estimate
         j0 = self.last_pose_ind(self.id)
@@ -699,4 +711,5 @@ class Robot(object):
             step: time to be added to internal state
         """
         self.t += step
-        self.logger.debug("Adding time %d to get new time %d", step, self.t)
+        logger = logging.getLogger(self.logger_name)
+        logger.debug("Adding time %d to get new time %d", step, self.t)
