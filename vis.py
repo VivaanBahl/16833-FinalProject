@@ -10,7 +10,7 @@ import matplotlib.animation as manimation
 import numpy as np
 
 class Visualizer(object):
-    def __init__(self, num_robots, disturbance):
+    def __init__(self, num_robots, disturbance, headless=False):
         """Initialize visualizer with program data.
 
         Args:
@@ -18,7 +18,8 @@ class Visualizer(object):
         """
         self.logger = logging.getLogger(__name__)
         self.logger.info("Starting visualization.")
-        
+       
+        self.headless = headless
         # Note that these are aliased to the real ones. Don't modify, just read.
         self.main_figure_number = 1
         self.error_figure_number = 2
@@ -50,7 +51,9 @@ class Visualizer(object):
         # Create the figures
         fig = plt.figure(self.main_figure_number)
         plt.ion()
-        plt.show()
+
+        if not self.headless:
+            plt.show()
         
         # fig2 = plt.figure(self.error_figure_number)
         # plt.ion()
@@ -284,12 +287,10 @@ class Visualizer(object):
         self.draw_messages(ax, motions, short_range_measurements, 'r')
         self.draw_messages(ax, motions, long_range_measurements, 'y')
 
-
-
-        plt.pause(0.01)
-
         self.logger.debug("Writing frame to file!")
         for i in range(self.fps): # Actually just output one frame per second
             self.writer.grab_frame()
         
-        plt.show()
+        if not self.headless:
+            plt.pause(0.01)
+            plt.show()

@@ -37,7 +37,7 @@ parser.add_argument(
     "-x", "--headless",
     action="store_true",
     default=False,
-    help="Disable visualization (and movie writing)."
+    help="Disable visualization, but still write movie."
 )
 parser.add_argument(
     "-t", "--time",
@@ -234,8 +234,8 @@ def main():
     robots, motions = initialize_robots_and_motions(config)
     num_robots = len(robots)
 
-    if not args.headless:
-        vis = Visualizer(num_robots, config['motion_parameters']['disturbance'])
+    vis = Visualizer(num_robots, config['motion_parameters']['disturbance'],
+            args.headless)
 
     pool = multiprocessing.Pool()
 
@@ -283,9 +283,8 @@ def main():
                         end_time - start_time)
 
         # Perform visualization update.
-        if not args.headless:
-            vis.update(robots, motions, short_range_measurements, 
-                       long_range_measurements)
+        vis.update(robots, motions, short_range_measurements, 
+                long_range_measurements)
 
         # As the final step of the loop, update the timestamp for each robot.
         for robot in robots:
