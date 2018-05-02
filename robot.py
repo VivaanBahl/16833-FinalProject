@@ -246,11 +246,13 @@ class Robot(object):
         Returns:
             Object to be transmitted to other robots when in short range.
         """
+        logger = logging.getLogger(self.logger_name)
 
         message = {"id": self.config['id']}
         n = min(self.short_range_history, len(self.odom_measurements))
         message["data"] = self.odom_measurements[-n:]
-        self.logger.debug("Returning short range message %s", message)
+        
+        logger.debug("Returning short range message %s", message)
         return message
 
 

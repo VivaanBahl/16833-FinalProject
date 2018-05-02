@@ -36,11 +36,11 @@ class Visualizer(object):
             self.robot_errors.append([])
 
         if disturbance == 'radial_waves':
-          self.disturbance = db.radial_waves
+            self.disturbance = db.radial_waves
         elif disturbance == 'linear':
-          self.disturbance = db.linear
+            self.disturbance = db.linear
         else:
-          self.disturbance = db.no_force
+            self.disturbance = db.no_force
 
         self.view_mode = "past_trajectories" # or None
         # self.view_mode = None
@@ -103,8 +103,8 @@ class Visualizer(object):
             max_num_poses = 0
             for i in range(0,len(robots)):
                 for j in range(0,len(robots)):
-                    max_num_poses = max(max_num_poses, robots[i].n_poses[j])
-
+                    if(j in robots[i].n_poses):
+                        max_num_poses = max(max_num_poses, robots[i].n_poses[j])
 
             # create square matrix showing all the robots' beliefs about each other
             robot_beliefs = np.zeros([len(robots), len(robots), max_num_poses, 2])  # 2 bc of x and y
@@ -227,8 +227,8 @@ class Visualizer(object):
 
         X, Y = np.meshgrid(np.arange(self.x_min_coord, self.x_max_coord,1), 
                            np.arange(self.y_min_coord, self.y_max_coord,1))
-        U = db.linear(0*X,X,Y)[1]
-        V = db.linear(0*X,X,Y)[2]
+        U = self.disturbance(0*X,X,Y)[1]
+        V = self.disturbance(0*X,X,Y)[2]
         Q = plt.quiver(X, Y, U, V, units='width', color=(0.0, 0.0, 0.0, 0.3))
 
         # draw robots ground truth
@@ -244,12 +244,13 @@ class Visualizer(object):
                 i_y = 0
 
                 for other_robot_id in range(0, len(robots)):
-                    belief_x = np.append(belief_x, robot_beliefs[i, other_robot_id, 0:robots[i].n_poses[other_robot_id], 0])
-                    belief_y = np.append(belief_y, robot_beliefs[i, other_robot_id, 0:robots[i].n_poses[other_robot_id], 1])
+                    if(other_robot_id in robots[i].n_poses):
+                        belief_x = np.append(belief_x, robot_beliefs[i, other_robot_id, 0:robots[i].n_poses[other_robot_id], 0])
+                        belief_y = np.append(belief_y, robot_beliefs[i, other_robot_id, 0:robots[i].n_poses[other_robot_id], 1])
 
-                    if(other_robot_id == i):
-                        i_x = len(belief_x)-1
-                        i_y = len(belief_y)-1
+                        if(other_robot_id == i):
+                            i_x = len(belief_x)-1
+                            i_y = len(belief_y)-1
 
                 
                 plt.scatter(belief_x, belief_y, marker='o')
