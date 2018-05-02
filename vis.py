@@ -24,8 +24,10 @@ class Visualizer(object):
         self.error_figure_number = 2
 
         # Start the stuff for the movie writer.
+        self.fps = 10
         metadata = dict(title='MAS SLAM Simulation', artist='Awesome Squad')
-        self.writer = manimation.writers['ffmpeg'](fps=10, metadata=metadata)
+        self.writer = manimation.writers['ffmpeg'](fps=self.fps,
+                                                   metadata=metadata)
         name = "MAS" + "_" + str(int(round(time.time()))) + ".mp4"
         self.writer.setup(plt.figure(self.main_figure_number), name, dpi=200)
         atexit.register(self.cleanup) # Close the writer when python terminates
@@ -287,6 +289,7 @@ class Visualizer(object):
         plt.pause(0.01)
 
         self.logger.debug("Writing frame to file!")
-        self.writer.grab_frame()
+        for i in range(self.fps): # Actually just output one frame per second
+            self.writer.grab_frame()
         
         plt.show()

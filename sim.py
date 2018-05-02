@@ -234,8 +234,6 @@ def main():
     robots, motions = initialize_robots_and_motions(config)
     num_robots = len(robots)
 
-    vis = Visualizer(num_robots, config['motion_parameters']['disturbance'])
-
     if not args.headless:
         vis = Visualizer(num_robots, config['motion_parameters']['disturbance'])
 
